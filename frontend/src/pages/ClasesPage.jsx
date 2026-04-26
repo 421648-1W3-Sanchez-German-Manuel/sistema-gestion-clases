@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { classesAPI, teachersAPI, classTypesAPI } from '../api/client';
+import { classesAPI, teachersAPI, classTypesAPI, exportAPI } from '../api/client';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingTable } from '../components/common/LoadingTable';
 import { EmptyState } from '../components/common/EmptyState';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { ExportMenu } from '../components/common/ExportMenu';
 import { Card, CardContent } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Button } from '../components/ui/button';
@@ -101,11 +102,16 @@ export default function ClasesPage() {
       <PageHeader
         title="Clases"
         description="Gestiona todas las clases del sistema"
-        actions={isSuperuser && (
-          <Button onClick={openCreate} data-testid="classes-create-button">
-            <Plus className="h-4 w-4 mr-2" /> Nueva clase
-          </Button>
-        )}
+        actions={
+          <div className="flex items-center gap-2">
+            <ExportMenu onExport={(format) => exportAPI.classes(format)} />
+            {isSuperuser && (
+              <Button onClick={openCreate} data-testid="classes-create-button">
+                <Plus className="h-4 w-4 mr-2" /> Nueva clase
+              </Button>
+            )}
+          </div>
+        }
       />
 
       <Card className="shadow-sm mb-6" data-testid="classes-filters-bar">

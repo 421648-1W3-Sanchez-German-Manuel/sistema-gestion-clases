@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { classesAPI, schedulesAPI, attendanceAPI } from '../api/client';
+import { classesAPI, schedulesAPI, attendanceAPI, exportAPI } from '../api/client';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingTable } from '../components/common/LoadingTable';
 import { EmptyState } from '../components/common/EmptyState';
+import { ExportMenu } from '../components/common/ExportMenu';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -106,6 +107,7 @@ export default function AsistenciaPage() {
           <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-4">
             <CardTitle className="flex items-center gap-2 text-base"><ClipboardCheck className="h-4 w-4" /> Asistencia - {selectedSchedObj?.date} ({selectedSchedObj?.start_time}-{selectedSchedObj?.end_time})</CardTitle>
             <div className="flex gap-2">
+              <ExportMenu onExport={(format) => exportAPI.attendance(selectedSchedule, format)} />
               <Button variant="secondary" size="sm" onClick={() => markAll(true)}><CheckCircle2 className="h-4 w-4 mr-1" /> Todos presentes</Button>
               <Button variant="secondary" size="sm" onClick={() => markAll(false)}><XCircle className="h-4 w-4 mr-1" /> Todos ausentes</Button>
             </div>

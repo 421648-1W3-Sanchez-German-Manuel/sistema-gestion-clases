@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { teachersAPI } from '../api/client';
+import { teachersAPI, exportAPI } from '../api/client';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingTable } from '../components/common/LoadingTable';
 import { EmptyState } from '../components/common/EmptyState';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { ExportMenu } from '../components/common/ExportMenu';
 import { Card } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Button } from '../components/ui/button';
@@ -53,7 +54,12 @@ export default function ProfesoresPage() {
 
   return (
     <div>
-      <PageHeader title="Profesores" description="Gestiona los profesores del sistema" actions={isSuperuser && <Button onClick={openCreate} data-testid="teachers-create-button"><Plus className="h-4 w-4 mr-2" /> Nuevo profesor</Button>} />
+      <PageHeader title="Profesores" description="Gestiona los profesores del sistema" actions={
+        <div className="flex items-center gap-2">
+          <ExportMenu onExport={(format) => exportAPI.teachers(format)} />
+          {isSuperuser && <Button onClick={openCreate} data-testid="teachers-create-button"><Plus className="h-4 w-4 mr-2" /> Nuevo profesor</Button>}
+        </div>
+      } />
 
       {loading ? <LoadingTable /> : teachers.length === 0 ? (
         <EmptyState icon={GraduationCap} title="Sin profesores" description="No hay profesores registrados." />

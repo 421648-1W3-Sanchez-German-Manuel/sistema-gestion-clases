@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { studentsAPI } from '../api/client';
+import { studentsAPI, exportAPI } from '../api/client';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingTable } from '../components/common/LoadingTable';
 import { EmptyState } from '../components/common/EmptyState';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { ExportMenu } from '../components/common/ExportMenu';
 import { Card, CardContent } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Button } from '../components/ui/button';
@@ -60,7 +61,10 @@ export default function AlumnosPage() {
   return (
     <div>
       <PageHeader title="Alumnos" description="Gestiona el registro de alumnos" actions={
-        <Button onClick={openCreate}><Plus className="h-4 w-4 mr-2" /> Nuevo alumno</Button>
+        <div className="flex items-center gap-2">
+          <ExportMenu onExport={(format) => exportAPI.students(format)} />
+          <Button onClick={openCreate}><Plus className="h-4 w-4 mr-2" /> Nuevo alumno</Button>
+        </div>
       } />
 
       <Card className="shadow-sm mb-6">

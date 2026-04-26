@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { billingAPI, studentsAPI } from '../api/client';
+import { billingAPI, studentsAPI, exportAPI } from '../api/client';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingTable } from '../components/common/LoadingTable';
 import { EmptyState } from '../components/common/EmptyState';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
+import { ExportMenu } from '../components/common/ExportMenu';
 import { Card, CardContent } from '../components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Button } from '../components/ui/button';
@@ -82,7 +83,12 @@ export default function FacturacionPage() {
 
   return (
     <div>
-      <PageHeader title="Facturaci\u00f3n" description="Gestiona las facturas de los alumnos" actions={<Button onClick={openCreate}><Plus className="h-4 w-4 mr-2" /> Nueva factura</Button>} />
+      <PageHeader title="Facturaci\u00f3n" description="Gestiona las facturas de los alumnos" actions={
+        <div className="flex items-center gap-2">
+          <ExportMenu onExport={(format) => exportAPI.billingFormatted(format, filterStatus)} />
+          <Button onClick={openCreate}><Plus className="h-4 w-4 mr-2" /> Nueva factura</Button>
+        </div>
+      } />
 
       <Card className="shadow-sm mb-6">
         <CardContent className="p-4 flex gap-3 items-center">

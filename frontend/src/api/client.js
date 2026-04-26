@@ -103,6 +103,53 @@ export const dashboardAPI = {
   get: () => api.get('/dashboard'),
 };
 
+// Export helper – triggers file download
+export const downloadExport = async (endpoint, format, filename) => {
+  try {
+    const res = await api.get(endpoint, {
+      params: { format },
+      responseType: 'blob',
+    });
+    const url = window.URL.createObjectURL(new Blob([res.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+    return true;
+  } catch (err) {
+    throw err;
+  }
+};
+
+// Export endpoints
+export const exportAPI = {
+  students: (format) => downloadExport('/export/students', format, `alumnos.${format}`),
+  classes: (format) => downloadExport('/export/classes', format, `clases.${format}`),
+  billing: (format, status) => {
+    const params = status && status !== 'all' ? `&status=${status}` : '';
+    return downloadExport(`/export/billing?format=${format}${params}`, undefined, `facturacion.${format}`);
+  },
+  billingFormatted: (format, status) => {
+    let endpoint = `/export/billing?format=${format}`;
+    if (status && status !== 'all') endpoint += `&status=${status}`;
+    return api.get(endpoint, { responseType: 'blob' }).then(res => {
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `facturacion.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    });
+  },
+  attendance: (scheduleId, format) => downloadExport(`/export/attendance/${scheduleId}`, format, `asistencia.${format}`),
+  teachers: (format) => downloadExport('/export/teachers', format, `profesores.${format}`),
+};
+
 // Schedules
 export const schedulesAPI = {
   list: (params) => {

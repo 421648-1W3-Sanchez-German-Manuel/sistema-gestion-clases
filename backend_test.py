@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Comprehensive backend API testing for Sistema de Gestión de Clases
-Tests all CRUD operations and workflows
+Tests all CRUD operations and workflows + Export functionality
 """
 
 import requests
@@ -447,6 +447,48 @@ class ClassManagementTester:
 
         return True
 
+    def test_export_functionality(self):
+        """Test all export endpoints for CSV and PDF formats"""
+        print("\n📊 Testing Export Functionality...")
+        
+        # Test students export
+        success, _ = self.make_request('GET', 'export/students?format=csv', expected_status=200)
+        self.log_test("Export Students CSV", success)
+        
+        success, _ = self.make_request('GET', 'export/students?format=pdf', expected_status=200)
+        self.log_test("Export Students PDF", success)
+        
+        # Test classes export
+        success, _ = self.make_request('GET', 'export/classes?format=csv', expected_status=200)
+        self.log_test("Export Classes CSV", success)
+        
+        success, _ = self.make_request('GET', 'export/classes?format=pdf', expected_status=200)
+        self.log_test("Export Classes PDF", success)
+        
+        # Test billing export
+        success, _ = self.make_request('GET', 'export/billing?format=csv', expected_status=200)
+        self.log_test("Export Billing CSV", success)
+        
+        success, _ = self.make_request('GET', 'export/billing?format=pdf', expected_status=200)
+        self.log_test("Export Billing PDF", success)
+        
+        # Test teachers export
+        success, _ = self.make_request('GET', 'export/teachers?format=csv', expected_status=200)
+        self.log_test("Export Teachers CSV", success)
+        
+        success, _ = self.make_request('GET', 'export/teachers?format=pdf', expected_status=200)
+        self.log_test("Export Teachers PDF", success)
+        
+        # Test attendance export (if we have schedules)
+        if self.created_entities['schedules']:
+            schedule_id = self.created_entities['schedules'][0]
+            success, _ = self.make_request('GET', f'export/attendance/{schedule_id}?format=csv', expected_status=200)
+            self.log_test("Export Attendance CSV", success)
+            
+            success, _ = self.make_request('GET', f'export/attendance/{schedule_id}?format=pdf', expected_status=200)
+            self.log_test("Export Attendance PDF", success)
+        else:
+            print("⚠️  No schedules available for attendance export test")
     def run_all_tests(self) -> bool:
         """Run all backend tests"""
         print("🚀 Starting Backend API Tests for Sistema de Gestión de Clases")
@@ -478,6 +520,12 @@ class ClassManagementTester:
                 test_method()
             except Exception as e:
                 print(f"❌ {test_method.__name__} failed with exception: {str(e)}")
+
+        # Test export functionality
+        try:
+            self.test_export_functionality()
+        except Exception as e:
+            print(f"❌ test_export_functionality failed with exception: {str(e)}")
 
         # Print summary
         print("\n" + "=" * 60)

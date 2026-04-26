@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, Request, HTTPException, Depends, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -821,6 +821,135 @@ async def get_student_billing(student_id: str, request: Request, user=Depends(re
         doc["student_name"] = student["name"] if student else "Desconocido"
         result.append(doc)
     return result
+
+
+# ─── EXPORT ENDPOINTS ───
+from exports import (
+    export_students_csv, export_students_pdf,
+    export_classes_csv, export_classes_pdf,
+    export_billing_csv, export_billing_pdf,
+    export_attendance_csv, export_attendance_pdf,
+    export_teachers_csv, export_teachers_pdf,
+)
+
+
+@api.get("/export/students")
+async def export_students(
+    request: Request,
+    format: str = Query("csv", regex="^(csv|pdf)$"),
+    user=Depends(require_role("ADMIN", "SUPERUSER")),
+):
+    students = await db.students.find({"active": True}, {"_id": 0}).to_list(10000)
+    if format == "pdf":
+        buf = export_students_pdf(students)
+        return StreamingResponse(buf, media_type="application/pdf",
+                                 headers={"Content-Disposition": "attachment; filename=alumnos.pdf"})
+    else:
+        buf = export_students_csv(students)
+        return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
+                                 headers={"Content-Disposition": "attachment; filename=alumnos.csv"})
+
+
+@api.get("/export/classes")
+async def export_classes_report(
+    request: Request,
+    format: str = Query("csv", regex="^(csv|pdf)$"),
+    user=Depends(require_role("ADMIN", "SUPERUSER")),
+):
+    classes = await db.classes.find({"active": True}, {"_id": 0}).to_list(10000)
+    enriched = [await enrich_class(c) for c in classes]
+    if format == "pdf":
+        buf = export_classes_pdf(enriched)
+        return StreamingResponse(buf, media_type="application/pdf",
+                                 headers={"Content-Disposition": "attachment; filename=clases.pdf"})
+    else:
+        buf = export_classes_csv(enriched)
+        return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
+                                 headers={"Content-Disposition": "attachment; filename=clases.csv"})
+
+
+@api.get("/export/billing")
+async def export_billing_report(
+    request: Request,
+    format: str = Query("csv", regex="^(csv|pdf)$"),
+    status: Optional[str] = None,
+    user=Depends(require_role("ADMIN", "SUPERUSER")),
+):
+    query = {}
+    if status:
+        query["status"] = status
+    bills = await db.billing.find(query, {"_id": 0}).to_list(10000)
+    for b in bills:
+        student = await db.students.find_one({"id": b["student_id"]}, {"_id": 0})
+        b["student_name"] = student["name"] if student else "Desconocido"
+    if format == "pdf":
+        buf = export_billing_pdf(bills)
+        return StreamingResponse(buf, media_type="application/pdf",
+                                 headers={"Content-Disposition": "attachment; filename=facturacion.pdf"})
+    else:
+        buf = export_billing_csv(bills)
+        return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
+                                 headers={"Content-Disposition": "attachment; filename=facturacion.csv"})
+
+
+@api.get("/export/attendance/{schedule_id}")
+async def export_attendance_report(
+    schedule_id: str,
+    request: Request,
+    format: str = Query("csv", regex="^(csv|pdf)$"),
+    user=Depends(require_role("ADMIN", "SUPERUSER")),
+):
+    sched = await db.classroom_schedules.find_one({"id": schedule_id}, {"_id": 0})
+    if not sched:
+        raise HTTPException(status_code=404, detail="Schedule no encontrado")
+    # Get enrolled students + attendance
+    enrollments = await db.class_enrollments.find(
+        {"class_id": sched["class_id"], "active": True}, {"_id": 0}
+    ).to_list(1000)
+    existing = await db.attendance.find({"schedule_id": schedule_id}, {"_id": 0}).to_list(1000)
+    att_map = {a["student_id"]: a for a in existing}
+    records = []
+    for e in enrollments:
+        student = await db.students.find_one({"id": e["student_id"], "active": True}, {"_id": 0})
+        if student:
+            att = att_map.get(e["student_id"])
+            records.append({
+                "student_name": student["name"],
+                "present": att["present"] if att else None,
+                "notes": att.get("notes", "") if att else "",
+            })
+    # Enrich schedule info
+    schedule_info = dict(sched)
+    cls = await db.classes.find_one({"id": sched["class_id"]}, {"_id": 0})
+    schedule_info["class_name"] = cls["name"] if cls else "-"
+    room = await db.classrooms.find_one({"id": sched["classroom_id"]}, {"_id": 0})
+    schedule_info["classroom_name"] = room["name"] if room else "-"
+
+    if format == "pdf":
+        buf = export_attendance_pdf(records, schedule_info)
+        return StreamingResponse(buf, media_type="application/pdf",
+                                 headers={"Content-Disposition": "attachment; filename=asistencia.pdf"})
+    else:
+        buf = export_attendance_csv(records, schedule_info)
+        return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
+                                 headers={"Content-Disposition": "attachment; filename=asistencia.csv"})
+
+
+@api.get("/export/teachers")
+async def export_teachers_report(
+    request: Request,
+    format: str = Query("csv", regex="^(csv|pdf)$"),
+    user=Depends(require_role("ADMIN", "SUPERUSER")),
+):
+    teachers = await db.teachers.find({"active": True}, {"_id": 0}).to_list(10000)
+    if format == "pdf":
+        buf = export_teachers_pdf(teachers)
+        return StreamingResponse(buf, media_type="application/pdf",
+                                 headers={"Content-Disposition": "attachment; filename=profesores.pdf"})
+    else:
+        buf = export_teachers_csv(teachers)
+        return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
+                                 headers={"Content-Disposition": "attachment; filename=profesores.csv"})
 
 
 # Include router + CORS
