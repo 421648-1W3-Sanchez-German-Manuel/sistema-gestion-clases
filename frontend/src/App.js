@@ -1,53 +1,85 @@
-import { useEffect } from "react";
-import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
+import React from 'react';
+import '@/App.css';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { Toaster } from './components/ui/sonner';
+import SidebarLayout from './components/layout/SidebarLayout';
+import LoginPage from './pages/LoginPage';
+import DashboardPage from './pages/DashboardPage';
+import ClasesPage from './pages/ClasesPage';
+import ClaseDetailPage from './pages/ClaseDetailPage';
+import ProximasClasesPage from './pages/ProximasClasesPage';
+import SalonesPage from './pages/SalonesPage';
+import AlumnosPage from './pages/AlumnosPage';
+import AlumnoDetailPage from './pages/AlumnoDetailPage';
+import AsistenciaPage from './pages/AsistenciaPage';
+import FacturacionPage from './pages/FacturacionPage';
+import ProfesoresPage from './pages/ProfesoresPage';
+import TiposClasePage from './pages/TiposClasePage';
+import UsuariosPage from './pages/UsuariosPage';
+import { Loader2 } from 'lucide-react';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return (
+    <div className="flex items-center justify-center h-screen bg-background">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
     </div>
   );
-};
+  if (!user) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function SuperuserRoute({ children }) {
+  const { user, loading, isSuperuser } = useAuth();
+  if (loading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!isSuperuser) return <Navigate to="/dashboard" replace />;
+  return children;
+}
+
+function PublicRoute({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return (
+    <div className="flex items-center justify-center h-screen bg-background">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+  );
+  if (user) return <Navigate to="/dashboard" replace />;
+  return children;
+}
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+      <Route element={<ProtectedRoute><SidebarLayout /></ProtectedRoute>}>
+        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/clases" element={<ClasesPage />} />
+        <Route path="/clases/:id" element={<ClaseDetailPage />} />
+        <Route path="/proximas-clases" element={<ProximasClasesPage />} />
+        <Route path="/salones" element={<SalonesPage />} />
+        <Route path="/alumnos" element={<AlumnosPage />} />
+        <Route path="/alumnos/:id" element={<AlumnoDetailPage />} />
+        <Route path="/asistencia" element={<AsistenciaPage />} />
+        <Route path="/facturacion" element={<FacturacionPage />} />
+        <Route path="/profesores" element={<ProfesoresPage />} />
+        <Route path="/tipos-clase" element={<TiposClasePage />} />
+        <Route path="/usuarios" element={<SuperuserRoute><UsuariosPage /></SuperuserRoute>} />
+      </Route>
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+    </Routes>
+  );
+}
 
 function App() {
   return (
-    <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </div>
+    <BrowserRouter>
+      <AuthProvider>
+        <AppRoutes />
+        <Toaster richColors position="top-right" />
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 
