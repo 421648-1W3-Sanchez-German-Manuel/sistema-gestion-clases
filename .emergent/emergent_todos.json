@@ -1,0 +1,42 @@
+[
+  {
+    "content": "Phase 1: POC - Build backend models, auth, and core endpoints",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 1: POC - Create and run poc_core_flow.py test script",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 1: POC - Fix until all core tests pass",
+    "status": "completed"
+  },
+  {
+    "content": "Phase 2: Get design guidelines from design agent",
+    "status": "in_progress"
+  },
+  {
+    "content": "Phase 2: Build complete backend API (all endpoints)",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2: Build complete frontend (all screens)",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2: All user stories covered in Development and Testing",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 2: End to End Testing using Testing Agent",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 3: Hardening - User management, pagination, overdue task",
+    "status": "pending"
+  },
+  {
+    "content": "Phase 4: Create GitHub repo with README.md and .agents/agents.md",
+    "status": "pending"
+  }
+]
