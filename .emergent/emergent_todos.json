@@ -1,18 +1,22 @@
 [
   {
     "content": "Install reportlab for PDF generation",
-    "status": "in_progress"
+    "status": "completed"
   },
   {
-    "content": "Create backend export endpoints (CSV/PDF) for Alumnos, Clases, Facturación, Asistencia",
-    "status": "pending"
+    "content": "Create backend export endpoints (CSV/PDF) for Alumnos, Clases, Facturación, Asistencia, Profesores",
+    "status": "completed"
   },
   {
-    "content": "Add export buttons to frontend pages (Alumnos, Clases, Facturación, Asistencia)",
-    "status": "pending"
+    "content": "Add export buttons to frontend pages (Alumnos, Clases, Facturación, Asistencia, Profesores)",
+    "status": "completed"
   },
   {
-    "content": "Test exports end-to-end with Testing Agent",
-    "status": "pending"
+    "content": "Test exports end-to-end with Testing Agent (100% passed)",
+    "status": "completed"
+  },
+  {
+    "content": "Push updates to GitHub repo",
+    "status": "completed"
   }
 ]
