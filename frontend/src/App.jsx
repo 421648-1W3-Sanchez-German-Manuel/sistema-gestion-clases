@@ -4,9 +4,10 @@ import { Toaster } from './components/ui/sonner';
 import SidebarLayout from './components/layout/SidebarLayout';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
-import ClasesPage from './pages/ClasesPage';
-import ClaseDetailPage from './pages/ClaseDetailPage';
-import ProximasClasesPage from './pages/ProximasClasesPage';
+import CursosPage from './pages/CursosPage';
+import CursoDetailPage from './pages/CursoDetailPage';
+import SesionesPage from './pages/SesionesPage';
+import ProximasSesionesPage from './pages/ProximasSesionesPage';
 import SalonesPage from './pages/SalonesPage';
 import AlumnosPage from './pages/AlumnosPage';
 import AlumnoDetailPage from './pages/AlumnoDetailPage';
@@ -53,9 +54,10 @@ function AppRoutes() {
       <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
       <Route element={<ProtectedRoute><SidebarLayout /></ProtectedRoute>}>
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/clases" element={<ClasesPage />} />
-        <Route path="/clases/:id" element={<ClaseDetailPage />} />
-        <Route path="/proximas-clases" element={<ProximasClasesPage />} />
+        <Route path="/cursos" element={<CursosPage />} />
+        <Route path="/cursos/:id" element={<CursoDetailPage />} />
+        <Route path="/sesiones" element={<SesionesPage />} />
+        <Route path="/proximas-sesiones" element={<ProximasSesionesPage />} />
         <Route path="/salones" element={<SalonesPage />} />
         <Route path="/alumnos" element={<AlumnosPage />} />
         <Route path="/alumnos/:id" element={<AlumnoDetailPage />} />
@@ -64,6 +66,9 @@ function AppRoutes() {
         <Route path="/profesores" element={<ProfesoresPage />} />
         <Route path="/tipos-clase" element={<TiposClasePage />} />
         <Route path="/usuarios" element={<SuperuserRoute><UsuariosPage /></SuperuserRoute>} />
+        <Route path="/clases" element={<Navigate to="/cursos" replace />} />
+        <Route path="/clases/:id" element={<Navigate to="/cursos/:id" replace />} />
+        <Route path="/proximas-clases" element={<Navigate to="/proximas-sesiones" replace />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

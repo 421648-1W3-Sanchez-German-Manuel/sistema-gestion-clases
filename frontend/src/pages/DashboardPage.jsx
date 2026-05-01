@@ -35,12 +35,12 @@ export default function DashboardPage() {
     <div>
       <PageHeader title="Dashboard" description="Resumen general del sistema" />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <Card className="shadow-sm" data-testid="kpi-active-classes">
+        <Card className="shadow-sm" data-testid="kpi-active-courses">
           <CardContent className="p-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Clases activas</p>
-                <p className="text-3xl font-semibold mt-1">{data?.active_classes || 0}</p>
+                <p className="text-sm text-muted-foreground">Cursos activos</p>
+                <p className="text-3xl font-semibold mt-1">{data?.active_courses || 0}</p>
               </div>
               <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
                 <BookOpen className="h-5 w-5 text-primary" />
@@ -95,10 +95,10 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <Card className="shadow-sm" data-testid="dashboard-today-classes-table">
+      <Card className="shadow-sm" data-testid="dashboard-today-sessions-table">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <CalendarClock className="h-4 w-4" /> Clases de hoy
+            <CalendarClock className="h-4 w-4" /> Sesiones de hoy
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -107,7 +107,7 @@ export default function DashboardPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Hora</TableHead>
-                  <TableHead>Clase</TableHead>
+                  <TableHead>Curso</TableHead>
                   <TableHead>Salón</TableHead>
                   <TableHead>Profesor</TableHead>
                 </TableRow>
@@ -116,7 +116,7 @@ export default function DashboardPage() {
                 {data.today_classes.map((c, i) => (
                   <TableRow key={i}>
                     <TableCell className="font-mono text-sm">{c.start_time} - {c.end_time}</TableCell>
-                    <TableCell className="font-medium">{c.class_name}</TableCell>
+                    <TableCell className="font-medium">{c.course_name}</TableCell>
                     <TableCell>{c.classroom_name}</TableCell>
                     <TableCell>{c.teacher_name}</TableCell>
                   </TableRow>
@@ -124,7 +124,7 @@ export default function DashboardPage() {
               </TableBody>
             </Table>
           ) : (
-            <EmptyState icon={CalendarClock} title="No hay clases hoy" description="No hay clases programadas para el día de hoy." />
+            <EmptyState icon={CalendarClock} title="No hay sesiones hoy" description="No hay sesiones programadas para el día de hoy." />
           )}
         </CardContent>
       </Card>

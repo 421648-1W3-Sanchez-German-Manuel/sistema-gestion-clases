@@ -1,15 +1,22 @@
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List
-from datetime import datetime, date, time, timezone
-import uuid
+from datetime import datetime, date, timezone
 
 
 def generate_id() -> str:
+    import uuid
     return str(uuid.uuid4())
 
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+# ─── Shared ───
+class Schedule(BaseModel):
+    day_of_week: str       # e.g. "saturday"
+    start_time: str        # e.g. "10:00"
+    end_time: str          # e.g. "12:00"
 
 
 # ─── Users ───
@@ -28,7 +35,7 @@ class UserCreate(BaseModel):
     name: str
     email: str
     password: str
-    role: str = "ADMIN"  # ADMIN | SUPERUSER
+    role: str = "ADMIN"
 
 
 class UserUpdate(BaseModel):
@@ -105,53 +112,6 @@ class ClassTypeOut(BaseModel):
     active: bool
 
 
-# ─── Classes ───
-class ClassInDB(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=generate_id)
-    name: str
-    class_type_id: str
-    teacher_id: str
-    max_students: int
-    start_date: Optional[str] = None  # ISO date string
-    end_date: Optional[str] = None
-    active: bool = True
-    created_at: datetime = Field(default_factory=utc_now)
-
-
-class ClassCreate(BaseModel):
-    name: str
-    class_type_id: str
-    teacher_id: str
-    max_students: int
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-
-
-class ClassUpdate(BaseModel):
-    name: Optional[str] = None
-    class_type_id: Optional[str] = None
-    teacher_id: Optional[str] = None
-    max_students: Optional[int] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-
-
-class ClassOut(BaseModel):
-    id: str
-    name: str
-    class_type_id: str
-    teacher_id: str
-    max_students: int
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    active: bool
-    created_at: datetime
-    class_type_name: Optional[str] = None
-    teacher_name: Optional[str] = None
-    enrolled_count: Optional[int] = None
-
-
 # ─── Classrooms ───
 class ClassroomInDB(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -182,39 +142,96 @@ class ClassroomOut(BaseModel):
     active: bool
 
 
-# ─── Classroom Schedules ───
-class ScheduleInDB(BaseModel):
+# ─── Courses ───
+class CourseInDB(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=generate_id)
+    name: str
+    teacher_id: str
+    class_type_id: str
+    schedule: Schedule
+    start_month: str          # YYYY-MM
+    max_students: int
+    active: bool = True
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class CourseCreate(BaseModel):
+    name: str
+    teacher_id: str
+    class_type_id: str
+    schedule: Schedule
+    start_month: str
+    max_students: int
+
+
+class CourseUpdate(BaseModel):
+    name: Optional[str] = None
+    teacher_id: Optional[str] = None
+    class_type_id: Optional[str] = None
+    schedule: Optional[Schedule] = None
+    start_month: Optional[str] = None
+    max_students: Optional[int] = None
+
+
+class CourseOut(BaseModel):
+    id: str
+    name: str
+    teacher_id: str
+    class_type_id: str
+    schedule: Schedule
+    start_month: str
+    max_students: int
+    active: bool
+    created_at: datetime
+    teacher_name: Optional[str] = None
+    class_type_name: Optional[str] = None
+    student_count: Optional[int] = None
+
+
+# ─── Class Sessions ───
+class ClassSessionInDB(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=generate_id)
+    course_id: str
+    date: str                 # YYYY-MM-DD
+    start_time: str
+    end_time: str
     classroom_id: str
-    class_id: str
-    date: str  # ISO date YYYY-MM-DD
-    start_time: str  # HH:MM
-    end_time: str  # HH:MM
+    recovered: bool = False
+    active: bool = True
+    created_at: datetime = Field(default_factory=utc_now)
 
 
-class ScheduleCreate(BaseModel):
-    class_id: str
+class ClassSessionCreate(BaseModel):
+    course_id: str
     date: str
     start_time: str
     end_time: str
+    classroom_id: str
+    recovered: bool = False
 
 
-class ScheduleUpdate(BaseModel):
-    class_id: Optional[str] = None
+class ClassSessionUpdate(BaseModel):
+    course_id: Optional[str] = None
     date: Optional[str] = None
     start_time: Optional[str] = None
     end_time: Optional[str] = None
+    classroom_id: Optional[str] = None
+    recovered: Optional[bool] = None
 
 
-class ScheduleOut(BaseModel):
+class ClassSessionOut(BaseModel):
     id: str
-    classroom_id: str
-    class_id: str
+    course_id: str
     date: str
     start_time: str
     end_time: str
-    class_name: Optional[str] = None
+    classroom_id: str
+    recovered: bool
+    active: bool
+    created_at: datetime
+    course_name: Optional[str] = None
     classroom_name: Optional[str] = None
     teacher_name: Optional[str] = None
 
@@ -227,6 +244,7 @@ class StudentInDB(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     birth_date: Optional[str] = None
+    course_id: Optional[str] = None
     active: bool = True
     created_at: datetime = Field(default_factory=utc_now)
 
@@ -236,6 +254,7 @@ class StudentCreate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     birth_date: Optional[str] = None
+    course_id: Optional[str] = None
 
 
 class StudentUpdate(BaseModel):
@@ -243,6 +262,7 @@ class StudentUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     birth_date: Optional[str] = None
+    course_id: Optional[str] = None
 
 
 class StudentOut(BaseModel):
@@ -251,36 +271,14 @@ class StudentOut(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     birth_date: Optional[str] = None
+    course_id: Optional[str] = None
     active: bool
     created_at: datetime
-
-
-# ─── Enrollments ───
-class EnrollmentInDB(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=generate_id)
-    class_id: str
-    student_id: str
-    enrollment_date: str = Field(default_factory=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%d"))
-    active: bool = True
-
-
-class EnrollRequest(BaseModel):
-    class_id: str
-
-
-class EnrollmentOut(BaseModel):
-    id: str
-    class_id: str
-    student_id: str
-    enrollment_date: str
-    active: bool
-    class_name: Optional[str] = None
-    student_name: Optional[str] = None
+    course_name: Optional[str] = None
 
 
 # ─── Attendance ───
-class AttendanceRecord(BaseModel):
+class AttendanceBulkItem(BaseModel):
     student_id: str
     present: bool
     notes: Optional[str] = None
@@ -289,7 +287,7 @@ class AttendanceRecord(BaseModel):
 class AttendanceInDB(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=generate_id)
-    schedule_id: str
+    class_id: str
     student_id: str
     present: bool
     notes: Optional[str] = None
@@ -298,14 +296,22 @@ class AttendanceInDB(BaseModel):
 
 class AttendanceOut(BaseModel):
     id: str
-    schedule_id: str
+    class_id: str
     student_id: str
     present: bool
     notes: Optional[str] = None
     recorded_at: datetime
     student_name: Optional[str] = None
-    schedule_date: Optional[str] = None
-    class_name: Optional[str] = None
+    class_date: Optional[str] = None
+    course_name: Optional[str] = None
+
+
+class StudentWithAttendance(BaseModel):
+    student_id: str
+    student_name: str
+    present: Optional[bool] = None
+    notes: str = ""
+    attendance_id: Optional[str] = None
 
 
 # ─── Billing ───
@@ -314,7 +320,7 @@ class BillingInDB(BaseModel):
     id: str = Field(default_factory=generate_id)
     student_id: str
     amount: float
-    due_date: str  # YYYY-MM-DD
+    due_date: str
     paid_date: Optional[str] = None
     status: str = "PENDING"  # PENDING | PAID | OVERDUE | CANCELLED
     description: Optional[str] = None

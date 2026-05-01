@@ -39,16 +39,40 @@ export const classTypesAPI = {
   delete: (id) => api.delete(`/class-types/${id}`),
 };
 
-// Classes
-export const classesAPI = {
-  list: () => api.get('/classes'),
+// Courses
+export const coursesAPI = {
+  list: (params) => {
+    const q = new URLSearchParams();
+    if (params?.skip) q.set('skip', params.skip);
+    if (params?.limit) q.set('limit', params.limit);
+    return api.get(`/courses?${q.toString()}`);
+  },
+  get: (id) => api.get(`/courses/${id}`),
+  create: (data) => api.post('/courses', data),
+  update: (id, data) => api.put(`/courses/${id}`, data),
+  delete: (id) => api.delete(`/courses/${id}`),
+  students: (id) => api.get(`/courses/${id}/students`),
+  sessions: (id) => api.get(`/courses/${id}/classes`),
+};
+
+// Sessions (Class Sessions)
+export const sessionsAPI = {
+  list: (params) => {
+    const q = new URLSearchParams();
+    if (params?.course_id) q.set('course_id', params.course_id);
+    if (params?.date) q.set('date', params.date);
+    if (params?.recovered !== undefined) q.set('recovered', params.recovered);
+    return api.get(`/classes?${q.toString()}`);
+  },
   upcoming: () => api.get('/classes/upcoming'),
   get: (id) => api.get(`/classes/${id}`),
   create: (data) => api.post('/classes', data),
   update: (id, data) => api.put(`/classes/${id}`, data),
   delete: (id) => api.delete(`/classes/${id}`),
-  students: (id) => api.get(`/classes/${id}/students`),
 };
+
+// Legacy classesAPI for backward compatibility (maps to sessionsAPI)
+export const classesAPI = sessionsAPI;
 
 // Classrooms
 export const classroomsAPI = {
@@ -65,22 +89,24 @@ export const classroomsAPI = {
 
 // Students
 export const studentsAPI = {
-  list: (search) => api.get(`/students${search ? `?search=${search}` : ''}`),
+  list: (params) => {
+    const q = new URLSearchParams();
+    if (params?.search) q.set('search', params.search);
+    if (params?.course_id) q.set('course_id', params.course_id);
+    return api.get(`/students?${q.toString()}`);
+  },
   get: (id) => api.get(`/students/${id}`),
   create: (data) => api.post('/students', data),
   update: (id, data) => api.put(`/students/${id}`, data),
   delete: (id) => api.delete(`/students/${id}`),
-  classes: (id) => api.get(`/students/${id}/classes`),
-  enroll: (id, data) => api.post(`/students/${id}/enroll`, data),
-  unenroll: (id, classId) => api.delete(`/students/${id}/enroll/${classId}`),
   attendance: (id) => api.get(`/students/${id}/attendance`),
   billing: (id) => api.get(`/students/${id}/billing`),
 };
 
 // Attendance
 export const attendanceAPI = {
-  getForSchedule: (scheduleId) => api.get(`/attendance/schedule/${scheduleId}`),
-  record: (scheduleId, records) => api.post(`/attendance/schedule/${scheduleId}`, records),
+  getForSession: (sessionId) => api.get(`/attendance/class/${sessionId}`),
+  record: (sessionId, records) => api.post(`/attendance/class/${sessionId}`, records),
 };
 
 // Billing
@@ -127,7 +153,8 @@ export const downloadExport = async (endpoint, format, filename) => {
 // Export endpoints
 export const exportAPI = {
   students: (format) => downloadExport('/export/students', format, `alumnos.${format}`),
-  classes: (format) => downloadExport('/export/classes', format, `clases.${format}`),
+  courses: (format) => downloadExport('/export/classes', format, `cursos.${format}`),
+  classes: (format) => downloadExport('/export/classes', format, `cursos.${format}`),
   billing: (format, status) => {
     const params = status && status !== 'all' ? `&status=${status}` : '';
     return downloadExport(`/export/billing?format=${format}${params}`, undefined, `facturacion.${format}`);
@@ -146,26 +173,21 @@ export const exportAPI = {
       window.URL.revokeObjectURL(url);
     });
   },
-  attendance: (scheduleId, format) => downloadExport(`/export/attendance/${scheduleId}`, format, `asistencia.${format}`),
+  attendance: (sessionId, format) => downloadExport(`/export/attendance/${sessionId}`, format, `asistencia.${format}`),
   teachers: (format) => downloadExport('/export/teachers', format, `profesores.${format}`),
 };
 
-// Schedules
-export const schedulesAPI = {
-  list: (params) => {
-    const q = new URLSearchParams();
-    if (params?.date_from) q.set('date_from', params.date_from);
-    if (params?.date_to) q.set('date_to', params.date_to);
-    return api.get(`/schedules?${q.toString()}`);
-  },
-};
+
 
 // Response interceptor for 401 handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      window.location.href = '/login';
+      // Don't redirect on /auth/me — AuthContext handles it by setting user to null
+      if (!error.config?.url?.includes('/auth/me')) {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

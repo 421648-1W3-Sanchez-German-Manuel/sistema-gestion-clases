@@ -8,14 +8,16 @@ import {
   LayoutDashboard, BookOpen, CalendarClock, Building2, Users, ClipboardCheck,
   Receipt, GraduationCap, Layers, UserCog, Menu, LogOut, ChevronLeft
 } from 'lucide-react';
+import kremlinLogo from '../../assets/kremlin-logo.jpg';
 
 const navGroups = [
   {
     label: 'Operación',
     items: [
       { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, testid: 'sidebar-nav-dashboard' },
-      { to: '/clases', label: 'Clases', icon: BookOpen, testid: 'sidebar-nav-clases' },
-      { to: '/proximas-clases', label: 'Próximas Clases', icon: CalendarClock, testid: 'sidebar-nav-proximas' },
+      { to: '/cursos', label: 'Cursos', icon: BookOpen, testid: 'sidebar-nav-cursos' },
+      { to: '/sesiones', label: 'Sesiones', icon: CalendarClock, testid: 'sidebar-nav-sesiones' },
+      { to: '/proximas-sesiones', label: 'Próximas Sesiones', icon: CalendarClock, testid: 'sidebar-nav-proximas' },
       { to: '/salones', label: 'Salones', icon: Building2, testid: 'sidebar-nav-salones' },
       { to: '/alumnos', label: 'Alumnos', icon: Users, testid: 'sidebar-nav-alumnos' },
       { to: '/asistencia', label: 'Asistencia', icon: ClipboardCheck, testid: 'sidebar-nav-asistencia' },
@@ -83,8 +85,8 @@ export default function SidebarLayout() {
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:w-[260px] flex-col bg-white border-r border-border">
         <div className="flex items-center gap-2 px-4 h-14 border-b border-border">
-          <BookOpen className="h-6 w-6 text-primary" />
-          <span className="font-semibold text-base font-['Space_Grotesk']">Gestión Clases</span>
+          <img src={kremlinLogo} alt="Kremlin Agency" className="h-8 w-auto object-contain" />
+          <span className="font-semibold text-base font-['Bodoni_Moda']">Kremlin agency</span>
         </div>
         <NavItems />
         <Separator />
@@ -108,8 +110,8 @@ export default function SidebarLayout() {
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="w-[280px] p-0">
           <div className="flex items-center gap-2 px-4 h-14 border-b border-border">
-            <BookOpen className="h-6 w-6 text-primary" />
-            <span className="font-semibold">Gestión Clases</span>
+            <img src={kremlinLogo} alt="Kremlin Agency" className="h-8 w-auto object-contain" />
+            <span className="font-semibold">Kremlin agency</span>
           </div>
           <NavItems onNavigate={() => setMobileOpen(false)} />
           <Separator />

@@ -13,12 +13,11 @@ from models import (
     UserInDB, UserCreate, UserUpdate, UserOut,
     TeacherInDB, TeacherCreate, TeacherUpdate, TeacherOut,
     ClassTypeInDB, ClassTypeCreate, ClassTypeUpdate, ClassTypeOut,
-    ClassInDB, ClassCreate, ClassUpdate, ClassOut,
     ClassroomInDB, ClassroomCreate, ClassroomUpdate, ClassroomOut,
-    ScheduleInDB, ScheduleCreate, ScheduleUpdate, ScheduleOut,
+    CourseInDB, CourseCreate, CourseUpdate, CourseOut, Schedule,
+    ClassSessionInDB, ClassSessionCreate, ClassSessionUpdate, ClassSessionOut,
     StudentInDB, StudentCreate, StudentUpdate, StudentOut,
-    EnrollmentInDB, EnrollRequest, EnrollmentOut,
-    AttendanceInDB, AttendanceRecord, AttendanceOut,
+    AttendanceInDB, AttendanceBulkItem, AttendanceOut, StudentWithAttendance,
     BillingInDB, BillingCreate, BillingUpdate, BillingOut,
     LoginRequest, LoginResponse,
 )
@@ -37,7 +36,7 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ.get('DB_NAME', 'gestion_clases')]
 
-app = FastAPI(title="Sistema de Gestión de Clases", version="1.0.0")
+app = FastAPI(title="Sistema de Gestión de Clases", version="2.0.0")
 api = APIRouter(prefix="/api")
 
 # Configure logging
@@ -65,13 +64,19 @@ async def startup_event():
     await db.users.create_index("id", unique=True)
     await db.teachers.create_index("id", unique=True)
     await db.class_types.create_index("id", unique=True)
-    await db.classes.create_index("id", unique=True)
     await db.classrooms.create_index("id", unique=True)
-    await db.classroom_schedules.create_index("id", unique=True)
     await db.students.create_index("id", unique=True)
-    await db.class_enrollments.create_index("id", unique=True)
-    await db.attendance.create_index("id", unique=True)
+    await db.students.create_index("course_id")
     await db.billing.create_index("id", unique=True)
+    # Courses
+    await db.courses.create_index("id", unique=True)
+    # Class sessions
+    await db.classes.create_index("id", unique=True)
+    await db.classes.create_index("course_id")
+    await db.classes.create_index("date")
+    # Attendance
+    await db.attendance.create_index("id", unique=True)
+    await db.attendance.create_index([("class_id", 1), ("student_id", 1)], unique=True)
     logger.info("Base de datos inicializada correctamente")
 
 
@@ -230,110 +235,6 @@ async def delete_class_type(type_id: str, user=Depends(require_role("SUPERUSER")
     return {"message": "Tipo de clase desactivado"}
 
 
-# ─── CLASSES ───
-async def enrich_class(cls_doc):
-    """Add type_name, teacher_name, enrolled_count to class doc."""
-    doc = serialize_doc(cls_doc)
-    ct = await db.class_types.find_one({"id": doc.get("class_type_id")}, {"_id": 0})
-    doc["class_type_name"] = ct["name"] if ct else None
-    teacher = await db.teachers.find_one({"id": doc.get("teacher_id")}, {"_id": 0})
-    doc["teacher_name"] = teacher["name"] if teacher else None
-    count = await db.class_enrollments.count_documents({"class_id": doc["id"], "active": True})
-    doc["enrolled_count"] = count
-    return doc
-
-
-@api.get("/classes")
-async def list_classes(request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
-    classes = await db.classes.find({"active": True}, {"_id": 0}).to_list(1000)
-    return [await enrich_class(c) for c in classes]
-
-
-@api.get("/classes/upcoming")
-async def upcoming_classes(request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    # Find schedules from today onwards
-    schedules = await db.classroom_schedules.find({"date": {"$gte": today}}, {"_id": 0}).to_list(1000)
-    class_ids = list(set(s["class_id"] for s in schedules))
-    if not class_ids:
-        return []
-    classes = await db.classes.find({"id": {"$in": class_ids}, "active": True}, {"_id": 0}).to_list(1000)
-    result = []
-    for c in classes:
-        enriched = await enrich_class(c)
-        # Get next schedule
-        cls_schedules = [s for s in schedules if s["class_id"] == c["id"]]
-        cls_schedules.sort(key=lambda x: (x["date"], x["start_time"]))
-        if cls_schedules:
-            ns = cls_schedules[0]
-            enriched["next_schedule_date"] = ns["date"]
-            enriched["next_schedule_time"] = ns["start_time"]
-            enriched["next_schedule_end_time"] = ns["end_time"]
-            classroom = await db.classrooms.find_one({"id": ns["classroom_id"]}, {"_id": 0})
-            enriched["next_classroom_name"] = classroom["name"] if classroom else None
-        result.append(enriched)
-    result.sort(key=lambda x: (x.get("next_schedule_date", ""), x.get("next_schedule_time", "")))
-    return result
-
-
-@api.get("/classes/{class_id}")
-async def get_class(class_id: str, request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
-    cls = await db.classes.find_one({"id": class_id, "active": True}, {"_id": 0})
-    if not cls:
-        raise HTTPException(status_code=404, detail="Clase no encontrada")
-    return await enrich_class(cls)
-
-
-@api.post("/classes")
-async def create_class(data: ClassCreate, user=Depends(require_role("SUPERUSER"))):
-    # Validate teacher and class type exist
-    teacher = await db.teachers.find_one({"id": data.teacher_id, "active": True})
-    if not teacher:
-        raise HTTPException(status_code=400, detail="Profesor no encontrado")
-    ct = await db.class_types.find_one({"id": data.class_type_id, "active": True})
-    if not ct:
-        raise HTTPException(status_code=400, detail="Tipo de clase no encontrado")
-    new_class = ClassInDB(**data.model_dump())
-    doc = new_class.model_dump()
-    doc["created_at"] = doc["created_at"].isoformat()
-    await db.classes.insert_one(doc)
-    return await enrich_class(doc)
-
-
-@api.put("/classes/{class_id}")
-async def update_class(class_id: str, data: ClassUpdate, user=Depends(require_role("SUPERUSER"))):
-    updates = {k: v for k, v in data.model_dump().items() if v is not None}
-    if not updates:
-        raise HTTPException(status_code=400, detail="No hay datos para actualizar")
-    result = await db.classes.update_one({"id": class_id, "active": True}, {"$set": updates})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Clase no encontrada")
-    updated = await db.classes.find_one({"id": class_id}, {"_id": 0})
-    return await enrich_class(updated)
-
-
-@api.delete("/classes/{class_id}")
-async def delete_class(class_id: str, user=Depends(require_role("SUPERUSER"))):
-    result = await db.classes.update_one({"id": class_id, "active": True}, {"$set": {"active": False}})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Clase no encontrada")
-    return {"message": "Clase desactivada"}
-
-
-@api.get("/classes/{class_id}/students")
-async def get_class_students(class_id: str, request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
-    enrollments = await db.class_enrollments.find({"class_id": class_id, "active": True}, {"_id": 0}).to_list(1000)
-    result = []
-    for e in enrollments:
-        student = await db.students.find_one({"id": e["student_id"], "active": True}, {"_id": 0})
-        if student:
-            item = serialize_doc(e)
-            item["student_name"] = student["name"]
-            item["student_email"] = student.get("email")
-            result.append(item)
-    return result
-
-
 # ─── CLASSROOMS ───
 @api.get("/classrooms")
 async def list_classrooms(request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
@@ -377,98 +278,203 @@ async def delete_classroom(room_id: str, user=Depends(require_role("SUPERUSER"))
     return {"message": "Salón desactivado"}
 
 
-# ─── CLASSROOM SCHEDULES ───
-async def enrich_schedule(sched):
-    doc = serialize_doc(sched)
-    cls = await db.classes.find_one({"id": doc["class_id"]}, {"_id": 0})
-    doc["class_name"] = cls["name"] if cls else None
-    if cls:
-        teacher = await db.teachers.find_one({"id": cls.get("teacher_id")}, {"_id": 0})
-        doc["teacher_name"] = teacher["name"] if teacher else None
-    else:
-        doc["teacher_name"] = None
-    room = await db.classrooms.find_one({"id": doc["classroom_id"]}, {"_id": 0})
-    doc["classroom_name"] = room["name"] if room else None
+# ─── COURSES ───
+async def enrich_course(course_doc):
+    """Add teacher_name, class_type_name, student_count to course doc."""
+    doc = serialize_doc(course_doc)
+    teacher = await db.teachers.find_one({"id": doc.get("teacher_id")}, {"_id": 0})
+    doc["teacher_name"] = teacher["name"] if teacher else None
+    ct = await db.class_types.find_one({"id": doc.get("class_type_id")}, {"_id": 0})
+    doc["class_type_name"] = ct["name"] if ct else None
+    count = await db.students.count_documents({"course_id": doc["id"], "active": True})
+    doc["student_count"] = count
     return doc
 
 
-@api.get("/classrooms/{room_id}/schedules")
-async def get_classroom_schedules(
-    room_id: str,
+@api.get("/courses")
+async def list_courses(
     request: Request,
-    date: Optional[str] = None,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     user=Depends(require_role("ADMIN", "SUPERUSER")),
 ):
-    query = {"classroom_id": room_id}
-    if date:
-        query["date"] = date
-    schedules = await db.classroom_schedules.find(query, {"_id": 0}).to_list(1000)
-    return [await enrich_schedule(s) for s in schedules]
+    courses = await db.courses.find({"active": True}, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
+    return [await enrich_course(c) for c in courses]
 
 
+@api.get("/courses/{course_id}")
+async def get_course(course_id: str, request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
+    course = await db.courses.find_one({"id": course_id, "active": True}, {"_id": 0})
+    if not course:
+        raise HTTPException(status_code=404, detail="Curso no encontrado")
+    return await enrich_course(course)
+
+
+@api.get("/courses/{course_id}/students")
+async def get_course_students(course_id: str, request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
+    course = await db.courses.find_one({"id": course_id, "active": True}, {"_id": 0})
+    if not course:
+        raise HTTPException(status_code=404, detail="Curso no encontrado")
+    students = await db.students.find({"course_id": course_id, "active": True}, {"_id": 0}).to_list(1000)
+    return serialize_list(students)
+
+
+@api.get("/courses/{course_id}/classes")
+async def get_course_classes(course_id: str, request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
+    course = await db.courses.find_one({"id": course_id, "active": True}, {"_id": 0})
+    if not course:
+        raise HTTPException(status_code=404, detail="Curso no encontrado")
+    sessions = await db.classes.find({"course_id": course_id, "active": True}, {"_id": 0}).to_list(1000)
+    return [await enrich_session(s) for s in sessions]
+
+
+@api.post("/courses")
+async def create_course(data: CourseCreate, user=Depends(require_role("SUPERUSER"))):
+    teacher = await db.teachers.find_one({"id": data.teacher_id, "active": True})
+    if not teacher:
+        raise HTTPException(status_code=400, detail="Profesor no encontrado")
+    ct = await db.class_types.find_one({"id": data.class_type_id, "active": True})
+    if not ct:
+        raise HTTPException(status_code=400, detail="Tipo de clase no encontrado")
+    new_course = CourseInDB(**data.model_dump())
+    doc = new_course.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.courses.insert_one(doc)
+    return await enrich_course(doc)
+
+
+@api.put("/courses/{course_id}")
+async def update_course(course_id: str, data: CourseUpdate, user=Depends(require_role("SUPERUSER"))):
+    updates = {}
+    for k, v in data.model_dump().items():
+        if v is not None:
+            if isinstance(v, Schedule):
+                updates[k] = v.model_dump()
+            else:
+                updates[k] = v
+    if not updates:
+        raise HTTPException(status_code=400, detail="No hay datos para actualizar")
+    result = await db.courses.update_one({"id": course_id, "active": True}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Curso no encontrado")
+    updated = await db.courses.find_one({"id": course_id}, {"_id": 0})
+    return await enrich_course(updated)
+
+
+@api.delete("/courses/{course_id}")
+async def delete_course(course_id: str, user=Depends(require_role("SUPERUSER"))):
+    result = await db.courses.update_one({"id": course_id, "active": True}, {"$set": {"active": False}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Curso no encontrado")
+    return {"message": "Curso desactivado"}
+
+
+# ─── CLASS SESSIONS ───
 def times_overlap(s1_start, s1_end, s2_start, s2_end):
     """Check if two time ranges overlap."""
     return s1_start < s2_end and s2_start < s1_end
 
 
-@api.post("/classrooms/{room_id}/schedules")
-async def create_schedule(
-    room_id: str, data: ScheduleCreate,
-    user=Depends(require_role("SUPERUSER")),
+async def enrich_session(session_doc):
+    """Add course_name, classroom_name, teacher_name to session doc."""
+    doc = serialize_doc(session_doc)
+    course = await db.courses.find_one({"id": doc.get("course_id")}, {"_id": 0})
+    doc["course_name"] = course["name"] if course else None
+    room = await db.classrooms.find_one({"id": doc.get("classroom_id")}, {"_id": 0})
+    doc["classroom_name"] = room["name"] if room else None
+    if course:
+        teacher = await db.teachers.find_one({"id": course.get("teacher_id")}, {"_id": 0})
+        doc["teacher_name"] = teacher["name"] if teacher else None
+    else:
+        doc["teacher_name"] = None
+    return doc
+
+
+@api.get("/classes")
+async def list_sessions(
+    request: Request,
+    course_id: Optional[str] = None,
+    date: Optional[str] = None,
+    recovered: Optional[bool] = None,
+    user=Depends(require_role("ADMIN", "SUPERUSER")),
 ):
+    query = {"active": True}
+    if course_id:
+        query["course_id"] = course_id
+    if date:
+        query["date"] = date
+    if recovered is not None:
+        query["recovered"] = recovered
+    sessions = await db.classes.find(query, {"_id": 0}).to_list(1000)
+    return [await enrich_session(s) for s in sessions]
+
+
+@api.get("/classes/upcoming")
+async def upcoming_sessions(request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    sessions = await db.classes.find({"date": {"$gte": today}, "active": True}, {"_id": 0}).to_list(1000)
+    enriched = [await enrich_session(s) for s in sessions]
+    enriched.sort(key=lambda x: (x.get("date", ""), x.get("start_time", "")))
+    return enriched
+
+
+@api.get("/classes/{session_id}")
+async def get_session(session_id: str, request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
+    session = await db.classes.find_one({"id": session_id, "active": True}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+    return await enrich_session(session)
+
+
+@api.post("/classes")
+async def create_session(data: ClassSessionCreate, user=Depends(require_role("ADMIN", "SUPERUSER"))):
+    # Validate course exists
+    course = await db.courses.find_one({"id": data.course_id, "active": True})
+    if not course:
+        raise HTTPException(status_code=400, detail="Curso no encontrado")
     # Validate classroom exists
-    room = await db.classrooms.find_one({"id": room_id, "active": True})
+    room = await db.classrooms.find_one({"id": data.classroom_id, "active": True})
     if not room:
-        raise HTTPException(status_code=404, detail="Salón no encontrado")
-    # Validate class exists
-    cls = await db.classes.find_one({"id": data.class_id, "active": True})
-    if not cls:
-        raise HTTPException(status_code=400, detail="Clase no encontrada")
-    # Check scheduling conflict
-    existing = await db.classroom_schedules.find(
-        {"classroom_id": room_id, "date": data.date}, {"_id": 0}
-    ).to_list(1000)
-    for ex in existing:
-        if times_overlap(data.start_time, data.end_time, ex["start_time"], ex["end_time"]):
-            raise HTTPException(status_code=409, detail="Conflicto de horario: el salón ya tiene una clase programada en ese rango")
-    schedule = ScheduleInDB(classroom_id=room_id, **data.model_dump())
-    doc = schedule.model_dump()
-    await db.classroom_schedules.insert_one(doc)
-    return await enrich_schedule(doc)
+        raise HTTPException(status_code=400, detail="Salón no encontrado")
+    # Warn about classroom conflict if not recovered
+    if not data.recovered:
+        existing = await db.classes.find(
+            {"classroom_id": data.classroom_id, "date": data.date, "active": True}, {"_id": 0}
+        ).to_list(1000)
+        for ex in existing:
+            if times_overlap(data.start_time, data.end_time, ex["start_time"], ex["end_time"]):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Conflicto de horario: el salón ya tiene una sesión programada en ese rango",
+                )
+    new_session = ClassSessionInDB(**data.model_dump())
+    doc = new_session.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.classes.insert_one(doc)
+    return await enrich_session(doc)
 
 
-@api.put("/classrooms/schedules/{schedule_id}")
-async def update_schedule(
-    schedule_id: str, data: ScheduleUpdate,
-    user=Depends(require_role("SUPERUSER")),
-):
-    sched = await db.classroom_schedules.find_one({"id": schedule_id}, {"_id": 0})
-    if not sched:
-        raise HTTPException(status_code=404, detail="Schedule no encontrado")
+@api.put("/classes/{session_id}")
+async def update_session(session_id: str, data: ClassSessionUpdate, user=Depends(require_role("SUPERUSER"))):
+    session = await db.classes.find_one({"id": session_id, "active": True}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No hay datos para actualizar")
-    # Check conflict with new times
-    new_date = updates.get("date", sched["date"])
-    new_start = updates.get("start_time", sched["start_time"])
-    new_end = updates.get("end_time", sched["end_time"])
-    existing = await db.classroom_schedules.find(
-        {"classroom_id": sched["classroom_id"], "date": new_date, "id": {"$ne": schedule_id}}, {"_id": 0}
-    ).to_list(1000)
-    for ex in existing:
-        if times_overlap(new_start, new_end, ex["start_time"], ex["end_time"]):
-            raise HTTPException(status_code=409, detail="Conflicto de horario")
-    await db.classroom_schedules.update_one({"id": schedule_id}, {"$set": updates})
-    updated = await db.classroom_schedules.find_one({"id": schedule_id}, {"_id": 0})
-    return await enrich_schedule(updated)
+    result = await db.classes.update_one({"id": session_id, "active": True}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+    updated = await db.classes.find_one({"id": session_id}, {"_id": 0})
+    return await enrich_session(updated)
 
 
-@api.delete("/classrooms/schedules/{schedule_id}")
-async def delete_schedule(schedule_id: str, user=Depends(require_role("SUPERUSER"))):
-    result = await db.classroom_schedules.delete_one({"id": schedule_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Schedule no encontrado")
-    return {"message": "Schedule eliminado"}
+@api.delete("/classes/{session_id}")
+async def delete_session(session_id: str, user=Depends(require_role("SUPERUSER"))):
+    result = await db.classes.update_one({"id": session_id, "active": True}, {"$set": {"active": False}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+    return {"message": "Sesión desactivada"}
 
 
 # ─── STUDENTS ───
@@ -476,16 +482,29 @@ async def delete_schedule(schedule_id: str, user=Depends(require_role("SUPERUSER
 async def list_students(
     request: Request,
     search: Optional[str] = None,
+    course_id: Optional[str] = None,
+    active_only: bool = True,
     user=Depends(require_role("ADMIN", "SUPERUSER")),
 ):
-    query = {"active": True}
+    query = {"active": active_only}
+    if course_id:
+        query["course_id"] = course_id
     if search:
         query["$or"] = [
             {"name": {"$regex": search, "$options": "i"}},
             {"email": {"$regex": search, "$options": "i"}},
         ]
     students = await db.students.find(query, {"_id": 0}).to_list(1000)
-    return serialize_list(students)
+    result = []
+    for s in students:
+        doc = serialize_doc(s)
+        if doc.get("course_id"):
+            course = await db.courses.find_one({"id": doc["course_id"]}, {"_id": 0})
+            doc["course_name"] = course["name"] if course else None
+        else:
+            doc["course_name"] = None
+        result.append(doc)
+    return result
 
 
 @api.get("/students/{student_id}")
@@ -493,11 +512,26 @@ async def get_student(student_id: str, request: Request, user=Depends(require_ro
     student = await db.students.find_one({"id": student_id, "active": True}, {"_id": 0})
     if not student:
         raise HTTPException(status_code=404, detail="Alumno no encontrado")
-    return serialize_doc(student)
+    doc = serialize_doc(student)
+    if doc.get("course_id"):
+        course = await db.courses.find_one({"id": doc["course_id"]}, {"_id": 0})
+        doc["course_name"] = course["name"] if course else None
+    else:
+        doc["course_name"] = None
+    return doc
 
 
 @api.post("/students")
 async def create_student(data: StudentCreate, user=Depends(require_role("ADMIN", "SUPERUSER"))):
+    # Validate course if provided
+    if data.course_id:
+        course = await db.courses.find_one({"id": data.course_id, "active": True})
+        if not course:
+            raise HTTPException(status_code=400, detail="Curso no encontrado")
+        # Check max_students
+        count = await db.students.count_documents({"course_id": data.course_id, "active": True})
+        if count >= course["max_students"]:
+            raise HTTPException(status_code=400, detail="El curso ha alcanzado el límite máximo de alumnos")
     student = StudentInDB(**data.model_dump())
     doc = student.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
@@ -510,6 +544,14 @@ async def update_student(student_id: str, data: StudentUpdate, user=Depends(requ
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No hay datos para actualizar")
+    # Validate new course if changing
+    if "course_id" in updates and updates["course_id"]:
+        course = await db.courses.find_one({"id": updates["course_id"], "active": True})
+        if not course:
+            raise HTTPException(status_code=400, detail="Curso no encontrado")
+        count = await db.students.count_documents({"course_id": updates["course_id"], "active": True})
+        if count >= course["max_students"]:
+            raise HTTPException(status_code=400, detail="El curso ha alcanzado el límite máximo de alumnos")
     result = await db.students.update_one({"id": student_id, "active": True}, {"$set": updates})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Alumno no encontrado")
@@ -522,160 +564,106 @@ async def delete_student(student_id: str, user=Depends(require_role("ADMIN", "SU
     result = await db.students.update_one({"id": student_id, "active": True}, {"$set": {"active": False}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Alumno no encontrado")
-    # Also deactivate enrollments
-    await db.class_enrollments.update_many({"student_id": student_id, "active": True}, {"$set": {"active": False}})
     return {"message": "Alumno desactivado"}
 
 
-# ─── ENROLLMENTS ───
-@api.get("/students/{student_id}/classes")
-async def get_student_classes(student_id: str, request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
-    enrollments = await db.class_enrollments.find({"student_id": student_id, "active": True}, {"_id": 0}).to_list(1000)
-    result = []
-    for e in enrollments:
-        cls = await db.classes.find_one({"id": e["class_id"]}, {"_id": 0})
-        if cls:
-            item = serialize_doc(e)
-            item["class_name"] = cls["name"]
-            enriched = await enrich_class(cls)
-            item["class_type_name"] = enriched.get("class_type_name")
-            item["teacher_name"] = enriched.get("teacher_name")
-            result.append(item)
-    return result
-
-
-@api.post("/students/{student_id}/enroll")
-async def enroll_student(
-    student_id: str, data: EnrollRequest,
-    user=Depends(require_role("ADMIN", "SUPERUSER")),
-):
-    # Validate student
-    student = await db.students.find_one({"id": student_id, "active": True})
-    if not student:
-        raise HTTPException(status_code=404, detail="Alumno no encontrado")
-    # Validate class
-    cls = await db.classes.find_one({"id": data.class_id, "active": True}, {"_id": 0})
-    if not cls:
-        raise HTTPException(status_code=404, detail="Clase no encontrada")
-    # Check already enrolled
-    existing = await db.class_enrollments.find_one(
-        {"class_id": data.class_id, "student_id": student_id, "active": True}
-    )
-    if existing:
-        raise HTTPException(status_code=400, detail="El alumno ya está inscripto en esta clase")
-    # Check max_students
-    count = await db.class_enrollments.count_documents({"class_id": data.class_id, "active": True})
-    if count >= cls["max_students"]:
-        raise HTTPException(status_code=400, detail="La clase ha alcanzado el límite máximo de alumnos")
-    enrollment = EnrollmentInDB(class_id=data.class_id, student_id=student_id)
-    doc = enrollment.model_dump()
-    await db.class_enrollments.insert_one(doc)
-    return serialize_doc(doc)
-
-
-@api.delete("/students/{student_id}/enroll/{class_id}")
-async def unenroll_student(
-    student_id: str, class_id: str,
-    user=Depends(require_role("ADMIN", "SUPERUSER")),
-):
-    result = await db.class_enrollments.update_one(
-        {"student_id": student_id, "class_id": class_id, "active": True},
-        {"$set": {"active": False}},
-    )
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Inscripción no encontrada")
-    return {"message": "Alumno desinscripto"}
-
-
-# ─── ATTENDANCE ───
 @api.get("/students/{student_id}/attendance")
 async def get_student_attendance(student_id: str, request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
     records = await db.attendance.find({"student_id": student_id}, {"_id": 0}).to_list(1000)
     result = []
     for r in records:
         doc = serialize_doc(r)
-        sched = await db.classroom_schedules.find_one({"id": r["schedule_id"]}, {"_id": 0})
-        if sched:
-            doc["schedule_date"] = sched["date"]
-            doc["start_time"] = sched["start_time"]
-            doc["end_time"] = sched["end_time"]
-            cls = await db.classes.find_one({"id": sched["class_id"]}, {"_id": 0})
-            doc["class_name"] = cls["name"] if cls else None
+        session = await db.classes.find_one({"id": r["class_id"]}, {"_id": 0})
+        if session:
+            doc["class_date"] = session["date"]
+            doc["start_time"] = session["start_time"]
+            doc["end_time"] = session["end_time"]
+            course = await db.courses.find_one({"id": session["course_id"]}, {"_id": 0})
+            doc["course_name"] = course["name"] if course else None
         result.append(doc)
     return result
 
 
-@api.get("/attendance/schedule/{schedule_id}")
-async def get_schedule_attendance(
-    schedule_id: str, request: Request,
-    user=Depends(require_role("ADMIN", "SUPERUSER")),
-):
-    sched = await db.classroom_schedules.find_one({"id": schedule_id}, {"_id": 0})
-    if not sched:
-        raise HTTPException(status_code=404, detail="Schedule no encontrado")
-    # Get enrolled students
-    enrollments = await db.class_enrollments.find(
-        {"class_id": sched["class_id"], "active": True}, {"_id": 0}
-    ).to_list(1000)
-    # Get existing attendance
-    existing = await db.attendance.find({"schedule_id": schedule_id}, {"_id": 0}).to_list(1000)
-    att_map = {a["student_id"]: serialize_doc(a) for a in existing}
+@api.get("/students/{student_id}/billing")
+async def get_student_billing(student_id: str, request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
+    bills = await db.billing.find({"student_id": student_id}, {"_id": 0}).to_list(1000)
+    student = await db.students.find_one({"id": student_id}, {"_id": 0})
     result = []
-    for e in enrollments:
-        student = await db.students.find_one({"id": e["student_id"], "active": True}, {"_id": 0})
-        if student:
-            att = att_map.get(e["student_id"])
-            result.append({
-                "student_id": e["student_id"],
-                "student_name": student["name"],
-                "present": att["present"] if att else None,
-                "notes": att.get("notes", "") if att else "",
-                "attendance_id": att["id"] if att else None,
-            })
+    for b in bills:
+        doc = serialize_doc(b)
+        doc["student_name"] = student["name"] if student else "Desconocido"
+        result.append(doc)
     return result
 
 
-@api.post("/attendance/schedule/{schedule_id}")
-async def record_attendance(
-    schedule_id: str,
-    records: List[AttendanceRecord],
+# ─── ATTENDANCE ───
+@api.get("/attendance/class/{class_id}")
+async def get_class_attendance(
+    class_id: str, request: Request,
     user=Depends(require_role("ADMIN", "SUPERUSER")),
 ):
-    sched = await db.classroom_schedules.find_one({"id": schedule_id}, {"_id": 0})
-    if not sched:
-        raise HTTPException(status_code=404, detail="Schedule no encontrado")
-    class_id = sched["class_id"]
+    session = await db.classes.find_one({"id": class_id, "active": True}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+    # Get active students from the course
+    students = await db.students.find(
+        {"course_id": session["course_id"], "active": True}, {"_id": 0}
+    ).to_list(1000)
+    # Get existing attendance for this session
+    existing = await db.attendance.find({"class_id": class_id}, {"_id": 0}).to_list(1000)
+    att_map = {a["student_id"]: serialize_doc(a) for a in existing}
+    result = []
+    for s in students:
+        att = att_map.get(s["id"])
+        result.append({
+            "student_id": s["id"],
+            "student_name": s["name"],
+            "present": att["present"] if att else None,
+            "notes": att.get("notes", "") if att else "",
+            "attendance_id": att["id"] if att else None,
+        })
+    return result
+
+
+@api.post("/attendance/class/{class_id}")
+async def record_attendance(
+    class_id: str,
+    items: List[AttendanceBulkItem],
+    user=Depends(require_role("ADMIN", "SUPERUSER")),
+):
+    session = await db.classes.find_one({"id": class_id, "active": True}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
     saved = []
-    for rec in records:
-        # Validate student is enrolled and active
-        enrollment = await db.class_enrollments.find_one(
-            {"class_id": class_id, "student_id": rec.student_id, "active": True}
+    now = datetime.now(timezone.utc).isoformat()
+    for item in items:
+        # Validate student is active in the course
+        student = await db.students.find_one(
+            {"id": item.student_id, "course_id": session["course_id"], "active": True}
         )
-        if not enrollment:
+        if not student:
             raise HTTPException(
                 status_code=400,
-                detail=f"Alumno {rec.student_id} no está inscripto o activo en la clase",
+                detail=f"Alumno {item.student_id} no pertenece al curso o no está activo",
             )
         # Upsert attendance
-        existing = await db.attendance.find_one(
-            {"schedule_id": schedule_id, "student_id": rec.student_id}
+        await db.attendance.update_one(
+            {"class_id": class_id, "student_id": item.student_id},
+            {
+                "$set": {
+                    "present": item.present,
+                    "notes": item.notes,
+                    "recorded_at": now,
+                },
+                "$setOnInsert": {
+                    "class_id": class_id,
+                    "student_id": item.student_id,
+                    "id": f"{class_id}_{item.student_id}",
+                },
+            },
+            upsert=True,
         )
-        if existing:
-            await db.attendance.update_one(
-                {"schedule_id": schedule_id, "student_id": rec.student_id},
-                {"$set": {"present": rec.present, "notes": rec.notes, "recorded_at": datetime.now(timezone.utc).isoformat()}},
-            )
-        else:
-            att = AttendanceInDB(
-                schedule_id=schedule_id,
-                student_id=rec.student_id,
-                present=rec.present,
-                notes=rec.notes,
-            )
-            doc = att.model_dump()
-            doc["recorded_at"] = doc["recorded_at"].isoformat()
-            await db.attendance.insert_one(doc)
-        saved.append(rec.student_id)
+        saved.append(item.student_id)
     return {"message": f"Asistencia registrada para {len(saved)} alumnos", "student_ids": saved}
 
 
@@ -692,7 +680,6 @@ async def list_billing(
         query["status"] = status
     if student_id:
         query["student_id"] = student_id
-    # Exclude cancelled unless specifically asked
     bills = await db.billing.find(query, {"_id": 0}).to_list(1000)
     result = []
     for b in bills:
@@ -753,34 +740,6 @@ async def delete_billing(bill_id: str, user=Depends(require_role("ADMIN", "SUPER
     return {"message": "Factura cancelada"}
 
 
-# ─── DASHBOARD ───
-@api.get("/dashboard")
-async def get_dashboard(request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    active_classes = await db.classes.count_documents({"active": True})
-    active_students = await db.students.count_documents({"active": True})
-    active_teachers = await db.teachers.count_documents({"active": True})
-    # Today's schedules
-    today_schedules = await db.classroom_schedules.find({"date": today}, {"_id": 0}).to_list(100)
-    today_classes = []
-    for s in today_schedules:
-        enriched = await enrich_schedule(s)
-        today_classes.append(enriched)
-    today_classes.sort(key=lambda x: x.get("start_time", ""))
-    # Pending billing
-    pending_bills = await db.billing.count_documents({"status": "PENDING"})
-    overdue_bills = await db.billing.count_documents({"status": "OVERDUE"})
-    return {
-        "active_classes": active_classes,
-        "active_students": active_students,
-        "active_teachers": active_teachers,
-        "today_classes": today_classes,
-        "pending_bills": pending_bills,
-        "overdue_bills": overdue_bills,
-    }
-
-
-# ─── MARK OVERDUE BILLING ───
 @api.post("/billing/mark-overdue")
 async def mark_overdue_billing(user=Depends(require_role("ADMIN", "SUPERUSER"))):
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -791,36 +750,31 @@ async def mark_overdue_billing(user=Depends(require_role("ADMIN", "SUPERUSER")))
     return {"message": f"{result.modified_count} facturas marcadas como vencidas"}
 
 
-# ─── ALL SCHEDULES (for calendar) ───
-@api.get("/schedules")
-async def list_all_schedules(
-    request: Request,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
-    user=Depends(require_role("ADMIN", "SUPERUSER")),
-):
-    query = {}
-    if date_from and date_to:
-        query["date"] = {"$gte": date_from, "$lte": date_to}
-    elif date_from:
-        query["date"] = {"$gte": date_from}
-    elif date_to:
-        query["date"] = {"$lte": date_to}
-    schedules = await db.classroom_schedules.find(query, {"_id": 0}).to_list(1000)
-    return [await enrich_schedule(s) for s in schedules]
-
-
-# ─── STUDENTS BILLING ───
-@api.get("/students/{student_id}/billing")
-async def get_student_billing(student_id: str, request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
-    bills = await db.billing.find({"student_id": student_id}, {"_id": 0}).to_list(1000)
-    student = await db.students.find_one({"id": student_id}, {"_id": 0})
-    result = []
-    for b in bills:
-        doc = serialize_doc(b)
-        doc["student_name"] = student["name"] if student else "Desconocido"
-        result.append(doc)
-    return result
+# ─── DASHBOARD ───
+@api.get("/dashboard")
+async def get_dashboard(request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    active_courses = await db.courses.count_documents({"active": True})
+    active_students = await db.students.count_documents({"active": True})
+    active_teachers = await db.teachers.count_documents({"active": True})
+    # Today's sessions
+    today_sessions = await db.classes.find({"date": today, "active": True}, {"_id": 0}).to_list(100)
+    today_classes = []
+    for s in today_sessions:
+        enriched = await enrich_session(s)
+        today_classes.append(enriched)
+    today_classes.sort(key=lambda x: x.get("start_time", ""))
+    # Pending billing
+    pending_bills = await db.billing.count_documents({"status": "PENDING"})
+    overdue_bills = await db.billing.count_documents({"status": "OVERDUE"})
+    return {
+        "active_courses": active_courses,
+        "active_students": active_students,
+        "active_teachers": active_teachers,
+        "today_classes": today_classes,
+        "pending_bills": pending_bills,
+        "overdue_bills": overdue_bills,
+    }
 
 
 # ─── EXPORT ENDPOINTS ───
@@ -851,21 +805,21 @@ async def export_students(
 
 
 @api.get("/export/classes")
-async def export_classes_report(
+async def export_courses_report(
     request: Request,
     format: str = Query("csv", regex="^(csv|pdf)$"),
     user=Depends(require_role("ADMIN", "SUPERUSER")),
 ):
-    classes = await db.classes.find({"active": True}, {"_id": 0}).to_list(10000)
-    enriched = [await enrich_class(c) for c in classes]
+    courses = await db.courses.find({"active": True}, {"_id": 0}).to_list(10000)
+    enriched = [await enrich_course(c) for c in courses]
     if format == "pdf":
         buf = export_classes_pdf(enriched)
         return StreamingResponse(buf, media_type="application/pdf",
-                                 headers={"Content-Disposition": "attachment; filename=clases.pdf"})
+                                 headers={"Content-Disposition": "attachment; filename=cursos.pdf"})
     else:
         buf = export_classes_csv(enriched)
         return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
-                                 headers={"Content-Disposition": "attachment; filename=clases.csv"})
+                                 headers={"Content-Disposition": "attachment; filename=cursos.csv"})
 
 
 @api.get("/export/billing")
@@ -892,45 +846,47 @@ async def export_billing_report(
                                  headers={"Content-Disposition": "attachment; filename=facturacion.csv"})
 
 
-@api.get("/export/attendance/{schedule_id}")
+@api.get("/export/attendance/{class_id}")
 async def export_attendance_report(
-    schedule_id: str,
+    class_id: str,
     request: Request,
     format: str = Query("csv", regex="^(csv|pdf)$"),
     user=Depends(require_role("ADMIN", "SUPERUSER")),
 ):
-    sched = await db.classroom_schedules.find_one({"id": schedule_id}, {"_id": 0})
-    if not sched:
-        raise HTTPException(status_code=404, detail="Schedule no encontrado")
-    # Get enrolled students + attendance
-    enrollments = await db.class_enrollments.find(
-        {"class_id": sched["class_id"], "active": True}, {"_id": 0}
+    session = await db.classes.find_one({"id": class_id, "active": True}, {"_id": 0})
+    if not session:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+    # Get active students from course + their attendance
+    students = await db.students.find(
+        {"course_id": session["course_id"], "active": True}, {"_id": 0}
     ).to_list(1000)
-    existing = await db.attendance.find({"schedule_id": schedule_id}, {"_id": 0}).to_list(1000)
+    existing = await db.attendance.find({"class_id": class_id}, {"_id": 0}).to_list(1000)
     att_map = {a["student_id"]: a for a in existing}
     records = []
-    for e in enrollments:
-        student = await db.students.find_one({"id": e["student_id"], "active": True}, {"_id": 0})
-        if student:
-            att = att_map.get(e["student_id"])
-            records.append({
-                "student_name": student["name"],
-                "present": att["present"] if att else None,
-                "notes": att.get("notes", "") if att else "",
-            })
-    # Enrich schedule info
-    schedule_info = dict(sched)
-    cls = await db.classes.find_one({"id": sched["class_id"]}, {"_id": 0})
-    schedule_info["class_name"] = cls["name"] if cls else "-"
-    room = await db.classrooms.find_one({"id": sched["classroom_id"]}, {"_id": 0})
-    schedule_info["classroom_name"] = room["name"] if room else "-"
+    for s in students:
+        att = att_map.get(s["id"])
+        records.append({
+            "student_name": s["name"],
+            "present": att["present"] if att else None,
+            "notes": att.get("notes", "") if att else "",
+        })
+    # Enrich session info
+    course = await db.courses.find_one({"id": session["course_id"]}, {"_id": 0})
+    room = await db.classrooms.find_one({"id": session["classroom_id"]}, {"_id": 0})
+    session_info = {
+        "class_name": course["name"] if course else "-",
+        "date": session["date"],
+        "start_time": session["start_time"],
+        "end_time": session["end_time"],
+        "classroom_name": room["name"] if room else "-",
+    }
 
     if format == "pdf":
-        buf = export_attendance_pdf(records, schedule_info)
+        buf = export_attendance_pdf(records, session_info)
         return StreamingResponse(buf, media_type="application/pdf",
                                  headers={"Content-Disposition": "attachment; filename=asistencia.pdf"})
     else:
-        buf = export_attendance_csv(records, schedule_info)
+        buf = export_attendance_csv(records, session_info)
         return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv",
                                  headers={"Content-Disposition": "attachment; filename=asistencia.csv"})
 

@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../co
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
-import { BookOpen, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import kremlinLogo from '../assets/kremlin-logo.jpg';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -40,11 +41,9 @@ export default function LoginPage() {
         <Card className="w-full max-w-md shadow-[0_1px_0_rgba(16,24,40,0.04),0_8px_24px_rgba(16,24,40,0.06)]">
           <CardHeader className="text-center space-y-3">
             <div className="flex justify-center">
-              <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                <BookOpen className="h-6 w-6 text-primary" />
-              </div>
+              <img src={kremlinLogo} alt="Kremlin Agency" className="h-12 w-auto object-contain" />
             </div>
-            <CardTitle className="text-2xl font-['Space_Grotesk']">Acceso al sistema</CardTitle>
+            <CardTitle className="text-2xl font-['Bodoni_Moda']">Acceso al sistema</CardTitle>
             <CardDescription>Gestiona clases, asistencia y facturación de forma centralizada.</CardDescription>
           </CardHeader>
           <CardContent>
@@ -94,7 +93,7 @@ export default function LoginPage() {
         />
         <div className="absolute inset-0 flex items-end p-10">
           <div className="bg-white/80 backdrop-blur-sm rounded-xl p-6 max-w-sm">
-            <h3 className="font-semibold text-lg font-['Space_Grotesk'] mb-2">Sistema de Gestión de Clases</h3>
+            <h3 className="font-semibold text-lg font-['Bodoni_Moda'] mb-2">Kremlin agency</h3>
             <p className="text-sm text-muted-foreground">Administra profesores, alumnos, salones, horarios, asistencia y facturación desde un solo lugar.</p>
           </div>
         </div>

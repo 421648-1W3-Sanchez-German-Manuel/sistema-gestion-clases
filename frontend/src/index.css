@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Work+Sans:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Roboto+Mono:wght@400;500&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,53 +6,50 @@
 
 @layer base {
   :root {
-    --background: 210 20% 98%;
-    --foreground: 222 47% 11%;
+    --background: 220 10% 98%;
+    --foreground: 0 0% 9%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 0 0% 9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 173 80% 26%;
+    --popover-foreground: 0 0% 9%;
+    --primary: 0 0% 15%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 25% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 25% 96%;
-    --muted-foreground: 215 16% 35%;
-    --accent: 173 55% 92%;
-    --accent-foreground: 173 80% 18%;
+    --secondary: 220 10% 96%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 220 10% 96%;
+    --muted-foreground: 220 10% 42%;
+    --accent: 220 10% 96%;
+    --accent-foreground: 0 0% 9%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 214 20% 90%;
-    --input: 214 20% 90%;
-    --ring: 173 80% 26%;
+    --border: 220 10% 91%;
+    --input: 220 10% 91%;
+    --ring: 0 0% 15%;
     --chart-1: 173 80% 26%;
     --chart-2: 221 83% 53%;
     --chart-3: 27 96% 61%;
     --chart-4: 142 71% 45%;
     --chart-5: 0 72% 51%;
     --radius: 0.75rem;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 173 80% 26%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 0 0% 9%;
+    --sidebar-primary: 0 0% 15%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 10% 96%;
+    --sidebar-accent-foreground: 0 0% 9%;
+    --sidebar-border: 220 10% 91%;
+    --sidebar-ring: 0 0% 15%;
   }
 }
 
 @layer base {
-  * {
-    @apply border-border;
-    border-color: hsl(var(--border));
-  }
   body {
-    @apply bg-background text-foreground;
-    font-family: 'Work Sans', sans-serif;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: 'Inter', sans-serif;
   }
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Space Grotesk', sans-serif;
+    font-family: 'Bodoni Moda', serif;
   }
   code, .font-mono {
     font-family: 'Roboto Mono', monospace;
