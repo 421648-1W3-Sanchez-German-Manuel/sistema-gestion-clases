@@ -107,3 +107,37 @@ cd frontend && yarn install && yarn start
 - Toast notifications (sonner) para feedback
 - Loading states (skeleton) en operaciones async
 - Confirmación (AlertDialog) para eliminaciones
+
+## Skills Instalados
+
+Skills que mejoran la calidad del código y siguen best practices para este stack:
+
+### Backend (FastAPI + Python + MongoDB)
+
+| Skill | Installs | Descripción |
+|-------|----------|-------------|
+| [fastapi-python](https://skills.sh/mindrally/skills/fastapi-python) | 8K | FastAPI development best practices |
+| [python-project-structure](https://skills.sh/wshobson/agents/python-project-structure) | 6.6K | Python project structure and architecture |
+| [mongodb](https://skills.sh/hoodini/ai-agents-skills/mongodb) | 1.2K | MongoDB async patterns and best practices |
+
+### Frontend (React + TailwindCSS + shadcn/ui)
+
+| Skill | Installs | Descripción |
+|-------|----------|-------------|
+| [vercel-react-best-practices](https://skills.sh/vercel-labs/agent-skills/vercel-react-best-practices) | 363K | React best practices from Vercel Engineering |
+| [frontend-design](https://skills.sh/anthropics/skills/frontend-design) | 357K | Frontend design guidelines from Anthropic |
+| [web-design-guidelines](https://skills.sh/vercel-labs/agent-skills/web-design-guidelines) | 289K | Web design best practices |
+| [shadcn](https://skills.sh/shadcn/ui/shadcn) | 119K | shadcn/ui component guidelines |
+
+### Security
+
+| Skill | Installs | Descripción |
+|-------|----------|-------------|
+| [security-best-practices](https://skills.sh/openai/skills/security-best-practices) | 2.1K | Security best practices (JWT, auth, data protection) |
+
+### Workflow & Code Quality
+
+| Skill | Installs | Descripción |
+|-------|----------|-------------|
+| [test-driven-development](https://skills.sh/obra/superpowers/test-driven-development) | 67K | TDD practices for reliable code |
+| [verification-before-completion](https://skills.sh/obra/superpowers/verification-before-completion) | 55K | Verify work before marking complete |
