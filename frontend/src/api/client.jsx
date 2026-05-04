@@ -101,6 +101,13 @@ export const studentsAPI = {
   delete: (id) => api.delete(`/students/${id}`),
   attendance: (id) => api.get(`/students/${id}/attendance`),
   billing: (id) => api.get(`/students/${id}/billing`),
+  importExcel: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/students/import/excel', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
 
 // Attendance

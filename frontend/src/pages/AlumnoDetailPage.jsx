@@ -63,13 +63,22 @@ export default function AlumnoDetailPage() {
           <TabsTrigger value="facturacion"><Receipt className="h-4 w-4 mr-1" /> Facturaci\u00f3n</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="info">
+<TabsContent value="info">
           <Card className="shadow-sm"><CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
             <div><p className="text-sm text-muted-foreground">Nombre</p><p className="font-medium">{student.name}</p></div>
             <div><p className="text-sm text-muted-foreground">Email</p><p className="font-medium">{student.email || '-'}</p></div>
-            <div><p className="text-sm text-muted-foreground">Tel\u00e9fono</p><p className="font-medium">{student.phone || '-'}</p></div>
+            <div><p className="text-sm text-muted-foreground">Teléfono</p><p className="font-medium">{student.phone || '-'}</p></div>
             <div><p className="text-sm text-muted-foreground">Curso</p><p className="font-medium">{student.course_name || 'Sin curso asignado'}</p></div>
             <div><p className="text-sm text-muted-foreground">Fecha nacimiento</p><p className="font-mono">{student.birth_date || '-'}</p></div>
+            {student.guardian && (
+              <>
+                <div className="md:col-span-2 border-t pt-4 mt-2">
+                  <p className="text-sm text-muted-foreground mb-2">Tutor responsable</p>
+                </div>
+                <div><p className="text-sm text-muted-foreground">Nombre</p><p className="font-medium">{student.guardian.name}</p></div>
+                <div><p className="text-sm text-muted-foreground">Teléfono</p><p className="font-medium">{student.guardian.phone}</p></div>
+              </>
+            )}
           </CardContent></Card>
         </TabsContent>
 

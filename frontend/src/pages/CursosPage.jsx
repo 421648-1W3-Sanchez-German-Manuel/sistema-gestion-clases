@@ -14,19 +14,10 @@ import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Label } from '../components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Plus, Pencil, Trash2, Eye, BookOpen, Loader2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 
-const DAYS_OF_WEEK = [
-  { value: 'monday', label: 'Lunes' },
-  { value: 'tuesday', label: 'Martes' },
-  { value: 'wednesday', label: 'Miércoles' },
-  { value: 'thursday', label: 'Jueves' },
-  { value: 'friday', label: 'Viernes' },
-  { value: 'saturday', label: 'Sábado' },
-  { value: 'sunday', label: 'Domingo' },
-];
+// Day-of-week selections removed per Correcciones.md
 
 export default function CursosPage() {
   const { isSuperuser } = useAuth();
@@ -36,19 +27,14 @@ export default function CursosPage() {
   const [classTypes, setClassTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [filterType, setFilterType] = useState('all');
-  const [filterTeacher, setFilterTeacher] = useState('all');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: '',
-    class_type_id: '',
-    teacher_id: '',
     max_students: '',
     start_month: '',
-    schedule_day: '',
     schedule_start_time: '',
     schedule_end_time: '',
   });
@@ -68,26 +54,20 @@ export default function CursosPage() {
 
   const filtered = courses.filter(c => {
     if (search && !c.name.toLowerCase().includes(search.toLowerCase())) return false;
-    if (filterType !== 'all' && c.class_type_id !== filterType) return false;
-    if (filterTeacher !== 'all' && c.teacher_id !== filterTeacher) return false;
     return true;
   });
 
   const formatSchedule = (schedule) => {
     if (!schedule) return '-';
-    const day = DAYS_OF_WEEK.find(d => d.value === schedule.day_of_week)?.label || schedule.day_of_week;
-    return `${day} ${schedule.start_time} - ${schedule.end_time}`;
+    return `${schedule.start_time} - ${schedule.end_time}`;
   };
 
   const openCreate = () => {
     setEditing(null);
     setForm({
       name: '',
-      class_type_id: '',
-      teacher_id: '',
       max_students: '',
       start_month: '',
-      schedule_day: '',
       schedule_start_time: '',
       schedule_end_time: '',
     });
@@ -98,11 +78,8 @@ export default function CursosPage() {
     setEditing(c);
     setForm({
       name: c.name,
-      class_type_id: c.class_type_id,
-      teacher_id: c.teacher_id,
       max_students: String(c.max_students),
       start_month: c.start_month || '',
-      schedule_day: c.schedule?.day_of_week || '',
       schedule_start_time: c.schedule?.start_time || '',
       schedule_end_time: c.schedule?.end_time || '',
     });
@@ -110,19 +87,16 @@ export default function CursosPage() {
   };
 
   const handleSave = async () => {
-    if (!form.name || !form.class_type_id || !form.teacher_id || !form.max_students || !form.schedule_day || !form.schedule_start_time || !form.schedule_end_time) {
+    if (!form.name || !form.max_students || !form.schedule_start_time || !form.schedule_end_time) {
       toast.error('Completa los campos obligatorios'); return;
     }
     setSaving(true);
     try {
       const payload = {
         name: form.name,
-        class_type_id: form.class_type_id,
-        teacher_id: form.teacher_id,
         max_students: parseInt(form.max_students),
         start_month: form.start_month || null,
         schedule: {
-          day_of_week: form.schedule_day,
           start_time: form.schedule_start_time,
           end_time: form.schedule_end_time,
         },
@@ -174,20 +148,6 @@ export default function CursosPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input placeholder="Buscar por nombre…" value={search} onChange={e => setSearch(e.target.value)} className="pl-9 bg-white" />
           </div>
-          <Select value={filterType} onValueChange={setFilterType}>
-            <SelectTrigger className="w-[180px] bg-white"><SelectValue placeholder="Tipo" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los tipos</SelectItem>
-              {classTypes.map(ct => <SelectItem key={ct.id} value={ct.id}>{ct.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={filterTeacher} onValueChange={setFilterTeacher}>
-            <SelectTrigger className="w-[180px] bg-white"><SelectValue placeholder="Profesor" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los profesores</SelectItem>
-              {teachers.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
         </CardContent>
       </Card>
 
@@ -199,8 +159,6 @@ export default function CursosPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nombre</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Profesor</TableHead>
                 <TableHead>Horario</TableHead>
                 <TableHead>Inicio</TableHead>
                 <TableHead className="text-center">Alumnos</TableHead>
@@ -211,8 +169,6 @@ export default function CursosPage() {
               {filtered.map(c => (
                 <TableRow key={c.id} className="hover:bg-secondary/60 transition-colors duration-150">
                   <TableCell className="font-medium">{c.name}</TableCell>
-                  <TableCell><Badge variant="secondary">{c.class_type_name || '-'}</Badge></TableCell>
-                  <TableCell>{c.teacher_name || '-'}</TableCell>
                   <TableCell className="text-sm">{formatSchedule(c.schedule)}</TableCell>
                   <TableCell className="font-mono text-sm">{c.start_month || '-'}</TableCell>
                   <TableCell className="text-center">
@@ -247,34 +203,11 @@ export default function CursosPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div><Label>Nombre *</Label><Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="bg-white" data-testid="course-name-input" /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Tipo de clase *</Label>
-                <Select value={form.class_type_id} onValueChange={v => setForm({...form, class_type_id: v})}>
-                  <SelectTrigger className="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                  <SelectContent>{classTypes.map(ct => <SelectItem key={ct.id} value={ct.id}>{ct.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Profesor *</Label>
-                <Select value={form.teacher_id} onValueChange={v => setForm({...form, teacher_id: v})}>
-                  <SelectTrigger className="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                  <SelectContent>{teachers.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-            </div>
             <div><Label>Máx. alumnos *</Label><Input type="number" value={form.max_students} onChange={e => setForm({...form, max_students: e.target.value})} className="bg-white" /></div>
             <div><Label>Mes de inicio</Label><Input type="month" value={form.start_month} onChange={e => setForm({...form, start_month: e.target.value})} className="bg-white" /></div>
             <div className="border-t pt-4">
               <Label className="text-sm font-medium mb-3 block">Horario recurrente</Label>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <Label className="text-xs">Día *</Label>
-                  <Select value={form.schedule_day} onValueChange={v => setForm({...form, schedule_day: v})}>
-                    <SelectTrigger className="bg-white"><SelectValue placeholder="Día" /></SelectTrigger>
-                    <SelectContent>{DAYS_OF_WEEK.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs">Inicio *</Label>
                   <Input type="time" value={form.schedule_start_time} onChange={e => setForm({...form, schedule_start_time: e.target.value})} className="bg-white" />

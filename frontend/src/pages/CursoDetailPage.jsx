@@ -17,15 +17,7 @@ import { Label } from '../components/ui/label';
 import { ArrowLeft, Users, Plus, UserMinus, Loader2, Calendar, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 
-const DAYS_OF_WEEK = [
-  { value: 'monday', label: 'Lunes' },
-  { value: 'tuesday', label: 'Martes' },
-  { value: 'wednesday', label: 'Miércoles' },
-  { value: 'thursday', label: 'Jueves' },
-  { value: 'friday', label: 'Viernes' },
-  { value: 'saturday', label: 'Sábado' },
-  { value: 'sunday', label: 'Domingo' },
-];
+// Day-of-week mapping removed per Correcciones.md; schedule now contains start/end times only
 
 export default function CursoDetailPage() {
   const { id } = useParams();
@@ -66,8 +58,7 @@ export default function CursoDetailPage() {
 
   const formatSchedule = (schedule) => {
     if (!schedule) return 'Sin horario';
-    const day = DAYS_OF_WEEK.find(d => d.value === schedule.day_of_week)?.label || schedule.day_of_week;
-    return `${day} ${schedule.start_time} - ${schedule.end_time}`;
+    return `${schedule.start_time} - ${schedule.end_time}`;
   };
 
   const handleAddStudent = async () => {
@@ -105,7 +96,7 @@ export default function CursoDetailPage() {
 
       <PageHeader
         title={course.name}
-        description={`${course.class_type_name || ''} • ${course.teacher_name || ''}`}
+        description={/* description simplified due to schema changes */ ''}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">

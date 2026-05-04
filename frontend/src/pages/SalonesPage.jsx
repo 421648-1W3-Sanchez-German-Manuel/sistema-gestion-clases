@@ -25,7 +25,7 @@ export default function SalonesPage() {
   const [editing, setEditing] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: '', capacity: '', location: '' });
+  const [form, setForm] = useState({ name: '' });
   // Schedule
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [scheduleDate, setScheduleDate] = useState(new Date().toISOString().split('T')[0]);
@@ -58,14 +58,14 @@ export default function SalonesPage() {
   useEffect(() => { loadRooms(); }, []);
   useEffect(() => { if (selectedRoom) loadSchedules(selectedRoom.id, scheduleDate); }, [selectedRoom, scheduleDate]);
 
-  const openCreateRoom = () => { setEditing(null); setForm({ name: '', capacity: '', location: '' }); setModalOpen(true); };
-  const openEditRoom = (r) => { setEditing(r); setForm({ name: r.name, capacity: String(r.capacity), location: r.location || '' }); setModalOpen(true); };
+  const openCreateRoom = () => { setEditing(null); setForm({ name: '' }); setModalOpen(true); };
+  const openEditRoom = (r) => { setEditing(r); setForm({ name: r.name }); setModalOpen(true); };
 
   const handleSaveRoom = async () => {
-    if (!form.name || !form.capacity) { toast.error('Nombre y capacidad son obligatorios'); return; }
+    if (!form.name) { toast.error('Nombre es obligatorio'); return; }
     setSaving(true);
     try {
-      const payload = { ...form, capacity: parseInt(form.capacity) };
+      const payload = { name: form.name };
       if (editing) { await classroomsAPI.update(editing.id, payload); toast.success('Sal\u00f3n actualizado'); }
       else { await classroomsAPI.create(payload); toast.success('Sal\u00f3n creado'); }
       setModalOpen(false); loadRooms();
@@ -122,13 +122,11 @@ export default function SalonesPage() {
           {loading ? <LoadingTable rows={5} cols={3} /> : rooms.length === 0 ? <EmptyState icon={Building2} title="Sin salones" /> : (
             <Card className="shadow-sm" data-testid="classrooms-table">
               <Table>
-                <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead>Capacidad</TableHead><TableHead>Ubicaci\u00f3n</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Nombre</TableHead><TableHead className="text-right">Acciones</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {rooms.map(r => (
                     <TableRow key={r.id} className={`cursor-pointer hover:bg-secondary/60 transition-colors duration-150 ${selectedRoom?.id === r.id ? 'bg-accent' : ''}`} onClick={() => setSelectedRoom(r)}>
                       <TableCell className="font-medium">{r.name}</TableCell>
-                      <TableCell>{r.capacity}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{r.location || '-'}</TableCell>
                       <TableCell className="text-right">
                         {isSuperuser && (
                           <div className="flex justify-end gap-1" onClick={e => e.stopPropagation()}>
@@ -195,8 +193,8 @@ export default function SalonesPage() {
           <DialogHeader><DialogTitle>{editing ? 'Editar sal\u00f3n' : 'Nuevo sal\u00f3n'}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div><Label>Nombre *</Label><Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} className="bg-white" /></div>
-            <div><Label>Capacidad *</Label><Input type="number" value={form.capacity} onChange={e => setForm({...form, capacity: e.target.value})} className="bg-white" /></div>
-            <div><Label>Ubicaci\u00f3n</Label><Input value={form.location} onChange={e => setForm({...form, location: e.target.value})} className="bg-white" /></div>
+            
+            
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>

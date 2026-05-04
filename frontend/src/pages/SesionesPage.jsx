@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { sessionsAPI, coursesAPI, classroomsAPI, exportAPI } from '../api/client';
+import { sessionsAPI, coursesAPI, classroomsAPI, teachersAPI, classTypesAPI, exportAPI } from '../api/client';
 import { PageHeader } from '../components/common/PageHeader';
 import { LoadingTable } from '../components/common/LoadingTable';
 import { EmptyState } from '../components/common/EmptyState';
@@ -26,6 +26,8 @@ export default function SesionesPage() {
   const [sessions, setSessions] = useState([]);
   const [courses, setCourses] = useState([]);
   const [classrooms, setClassrooms] = useState([]);
+  const [teachers, setTeachers] = useState([]);
+  const [classTypes, setClassTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filterCourse, setFilterCourse] = useState('all');
   const [filterDate, setFilterDate] = useState('');
@@ -36,12 +38,32 @@ export default function SesionesPage() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     course_id: '',
+    teacher_id: '',
+    class_type_id: '',
     date: '',
     start_time: '',
     end_time: '',
     classroom_id: '',
     recovered: false,
   });
+
+  const hasConflict = (formDate, startTime, endTime, classroomId, teacherId, excludeId = null) => {
+    if (!formDate || !startTime || !endTime) return null;
+    for (const s of sessions) {
+      if (s.id === excludeId) continue;
+      if (s.date !== formDate) continue;
+      const s1 = startTime, e1 = endTime, s2 = s.start_time, e2 = s.end_time;
+      if (!(e1 <= s2 || e2 <= s1)) {
+        if (s.classroom_id === classroomId) return 'salón';
+        if (s.teacher_id === teacherId) return 'profesor';
+      }
+    }
+    return null;
+  };
+
+  const conflictType = form.date && form.start_time && form.end_time && form.classroom_id && form.teacher_id
+    ? hasConflict(form.date, form.start_time, form.end_time, form.classroom_id, form.teacher_id, editing?.id)
+    : null;
 
   const load = async () => {
     setLoading(true);
@@ -51,14 +73,18 @@ export default function SesionesPage() {
       if (filterDate) params.date = filterDate;
       if (filterRecovered !== 'all') params.recovered = filterRecovered === 'true';
       
-      const [sessionsRes, coursesRes, classroomsRes] = await Promise.all([
+      const [sessionsRes, coursesRes, classroomsRes, teachersRes, classTypesRes] = await Promise.all([
         sessionsAPI.list(params),
         coursesAPI.list(),
         classroomsAPI.list(),
+        teachersAPI.list(),
+        classTypesAPI.list(),
       ]);
       setSessions(sessionsRes.data);
       setCourses(coursesRes.data);
       setClassrooms(classroomsRes.data);
+      setTeachers(teachersRes.data);
+      setClassTypes(classTypesRes.data);
     } catch { toast.error('Error al cargar sesiones'); }
     setLoading(false);
   };
@@ -78,6 +104,8 @@ export default function SesionesPage() {
     setEditing(null);
     setForm({
       course_id: initialCourse || '',
+      teacher_id: '',
+      class_type_id: '',
       date: '',
       start_time: '',
       end_time: '',
@@ -91,6 +119,8 @@ export default function SesionesPage() {
     setEditing(s);
     setForm({
       course_id: s.course_id,
+      teacher_id: s.teacher_id,
+      class_type_id: s.class_type_id,
       date: s.date,
       start_time: s.start_time,
       end_time: s.end_time,
@@ -101,13 +131,15 @@ export default function SesionesPage() {
   };
 
   const handleSave = async () => {
-    if (!form.course_id || !form.date || !form.start_time || !form.end_time || !form.classroom_id) {
+    if (!form.course_id || !form.teacher_id || !form.class_type_id || !form.date || !form.start_time || !form.end_time || !form.classroom_id) {
       toast.error('Completa los campos obligatorios'); return;
     }
     setSaving(true);
     try {
       const payload = {
         course_id: form.course_id,
+        teacher_id: form.teacher_id,
+        class_type_id: form.class_type_id,
         date: form.date,
         start_time: form.start_time,
         end_time: form.end_time,
@@ -194,6 +226,7 @@ export default function SesionesPage() {
                 <TableHead>Horario</TableHead>
                 <TableHead>Salón</TableHead>
                 <TableHead>Profesor</TableHead>
+                <TableHead>Tipo de clase</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
@@ -206,6 +239,7 @@ export default function SesionesPage() {
                   <TableCell className="font-mono text-sm">{s.start_time} - {s.end_time}</TableCell>
                   <TableCell>{s.classroom_name || '-'}</TableCell>
                   <TableCell>{s.teacher_name || '-'}</TableCell>
+                  <TableCell>{s.class_type_name || '-'}</TableCell>
                   <TableCell>
                     {s.recovered ? (
                       <Badge variant="outline" className="border-orange-500 text-orange-600">Recuperación</Badge>
@@ -248,6 +282,26 @@ export default function SesionesPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Profesor *</Label>
+                <Select value={form.teacher_id} onValueChange={v => setForm({...form, teacher_id: v})}>
+                  <SelectTrigger className="bg-white"><SelectValue placeholder="Seleccionar profesor" /></SelectTrigger>
+                  <SelectContent>
+                    {teachers.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Tipo de clase *</Label>
+                <Select value={form.class_type_id} onValueChange={v => setForm({...form, class_type_id: v})}>
+                  <SelectTrigger className="bg-white"><SelectValue placeholder="Seleccionar tipo" /></SelectTrigger>
+                  <SelectContent>
+                    {classTypes.map(ct => <SelectItem key={ct.id} value={ct.id}>{ct.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <Label>Fecha *</Label>
@@ -279,10 +333,15 @@ export default function SesionesPage() {
               />
               <Label htmlFor="recovered" className="text-sm">Sesión de recuperación (no valida conflictos de horario)</Label>
             </div>
+            {conflictType && !form.recovered && (
+              <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-sm text-amber-800">
+                ⚠️ El {conflictType} ya tiene una sesión en este horario
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSave} disabled={saving || (conflictType && !form.recovered)}>
               {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
               {editing ? 'Actualizar' : 'Crear'}
             </Button>

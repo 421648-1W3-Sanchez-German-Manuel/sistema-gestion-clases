@@ -84,6 +84,10 @@ Sistema de gestión integral para administrar clases, alumnos, profesores, salon
 | Facturación | `/api/billing` |
 | Dashboard | `/api/dashboard` |
 
+## Tests
+Backend tests: run with pytest for backend models/endpoints tests (if tests are added).
+Frontend tests: run with npm test in the frontend directory.
+
 ## Instalación y Ejecución
 
 ### Backend

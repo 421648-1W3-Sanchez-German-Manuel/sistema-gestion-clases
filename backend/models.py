@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List
-from datetime import datetime, date, timezone
+from typing import Optional
+from datetime import datetime, timezone
 
 
 def generate_id() -> str:
@@ -14,7 +14,7 @@ def utc_now() -> datetime:
 
 # ─── Shared ───
 class Schedule(BaseModel):
-    day_of_week: str       # e.g. "saturday"
+    # day_of_week removed per Correcciones.md
     start_time: str        # e.g. "10:00"
     end_time: str          # e.g. "12:00"
 
@@ -117,28 +117,21 @@ class ClassroomInDB(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=generate_id)
     name: str
-    capacity: int
-    location: Optional[str] = None
+    # capacity and location removed per Correcciones.md
     active: bool = True
 
 
 class ClassroomCreate(BaseModel):
     name: str
-    capacity: int
-    location: Optional[str] = None
 
 
 class ClassroomUpdate(BaseModel):
     name: Optional[str] = None
-    capacity: Optional[int] = None
-    location: Optional[str] = None
 
 
 class ClassroomOut(BaseModel):
     id: str
     name: str
-    capacity: int
-    location: Optional[str] = None
     active: bool
 
 
@@ -147,8 +140,7 @@ class CourseInDB(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=generate_id)
     name: str
-    teacher_id: str
-    class_type_id: str
+    # teacher_id and class_type_id removed per Correcciones.md
     schedule: Schedule
     start_month: str          # YYYY-MM
     max_students: int
@@ -158,8 +150,6 @@ class CourseInDB(BaseModel):
 
 class CourseCreate(BaseModel):
     name: str
-    teacher_id: str
-    class_type_id: str
     schedule: Schedule
     start_month: str
     max_students: int
@@ -167,8 +157,6 @@ class CourseCreate(BaseModel):
 
 class CourseUpdate(BaseModel):
     name: Optional[str] = None
-    teacher_id: Optional[str] = None
-    class_type_id: Optional[str] = None
     schedule: Optional[Schedule] = None
     start_month: Optional[str] = None
     max_students: Optional[int] = None
@@ -177,13 +165,12 @@ class CourseUpdate(BaseModel):
 class CourseOut(BaseModel):
     id: str
     name: str
-    teacher_id: str
-    class_type_id: str
     schedule: Schedule
     start_month: str
     max_students: int
     active: bool
     created_at: datetime
+    # Optional aggregations for UI
     teacher_name: Optional[str] = None
     class_type_name: Optional[str] = None
     student_count: Optional[int] = None
@@ -194,6 +181,8 @@ class ClassSessionInDB(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=generate_id)
     course_id: str
+    teacher_id: str
+    class_type_id: str
     date: str                 # YYYY-MM-DD
     start_time: str
     end_time: str
@@ -205,6 +194,8 @@ class ClassSessionInDB(BaseModel):
 
 class ClassSessionCreate(BaseModel):
     course_id: str
+    teacher_id: str
+    class_type_id: str
     date: str
     start_time: str
     end_time: str
@@ -214,6 +205,8 @@ class ClassSessionCreate(BaseModel):
 
 class ClassSessionUpdate(BaseModel):
     course_id: Optional[str] = None
+    teacher_id: Optional[str] = None
+    class_type_id: Optional[str] = None
     date: Optional[str] = None
     start_time: Optional[str] = None
     end_time: Optional[str] = None
@@ -224,6 +217,8 @@ class ClassSessionUpdate(BaseModel):
 class ClassSessionOut(BaseModel):
     id: str
     course_id: str
+    teacher_id: str
+    class_type_id: str
     date: str
     start_time: str
     end_time: str
@@ -234,9 +229,15 @@ class ClassSessionOut(BaseModel):
     course_name: Optional[str] = None
     classroom_name: Optional[str] = None
     teacher_name: Optional[str] = None
+    class_type_name: Optional[str] = None
 
 
 # ─── Students ───
+class Guardian(BaseModel):
+    name: str
+    phone: str
+
+
 class StudentInDB(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=generate_id)
@@ -244,6 +245,7 @@ class StudentInDB(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     birth_date: Optional[str] = None
+    guardian: Optional[Guardian] = None
     course_id: Optional[str] = None
     active: bool = True
     created_at: datetime = Field(default_factory=utc_now)
@@ -254,6 +256,7 @@ class StudentCreate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     birth_date: Optional[str] = None
+    guardian: Optional[Guardian] = None
     course_id: Optional[str] = None
 
 
@@ -262,6 +265,7 @@ class StudentUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     birth_date: Optional[str] = None
+    guardian: Optional[Guardian] = None
     course_id: Optional[str] = None
 
 
@@ -271,6 +275,7 @@ class StudentOut(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     birth_date: Optional[str] = None
+    guardian: Optional[Guardian] = None
     course_id: Optional[str] = None
     active: bool
     created_at: datetime

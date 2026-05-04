@@ -1,13 +1,17 @@
-from fastapi import FastAPI, APIRouter, Request, HTTPException, Depends, Query
+from fastapi import FastAPI, APIRouter, Request, HTTPException, Depends, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import unicodedata
 from pathlib import Path
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
+from io import BytesIO
+import openpyxl
+from pydantic import BaseModel
 
 from models import (
     UserInDB, UserCreate, UserUpdate, UserOut,
@@ -27,6 +31,9 @@ from auth import (
     COOKIE_NAME,
 )
 from serializers import serialize_doc, serialize_list
+
+def normalize(s):
+    return unicodedata.normalize('NFD', str(s).strip()).encode('ascii', 'ignore').decode('utf-8').lower()
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -278,14 +285,25 @@ async def delete_classroom(room_id: str, user=Depends(require_role("SUPERUSER"))
     return {"message": "Salón desactivado"}
 
 
+@api.get("/classrooms/{room_id}/schedules")
+async def get_room_schedules(room_id: str, date: Optional[str] = None, user=Depends(require_role("ADMIN", "SUPERUSER"))):
+    room = await db.classrooms.find_one({"id": room_id, "active": True}, {"_id": 0})
+    if not room:
+        raise HTTPException(status_code=404, detail="Salón no encontrado")
+    query = {"classroom_id": room_id, "active": True}
+    if date:
+        query["date"] = date
+    sessions = await db.classes.find(query, {"_id": 0}).to_list(1000)
+    return [await enrich_session(s) for s in sessions]
+
+
 # ─── COURSES ───
 async def enrich_course(course_doc):
-    """Add teacher_name, class_type_name, student_count to course doc."""
+    """Augment course doc with student count. Teacher/class_type info is no longer stored on the course."""
     doc = serialize_doc(course_doc)
-    teacher = await db.teachers.find_one({"id": doc.get("teacher_id")}, {"_id": 0})
-    doc["teacher_name"] = teacher["name"] if teacher else None
-    ct = await db.class_types.find_one({"id": doc.get("class_type_id")}, {"_id": 0})
-    doc["class_type_name"] = ct["name"] if ct else None
+    # teacher_id and class_type_id no longer exist; enrich with None for UI compatibility
+    doc["teacher_name"] = None
+    doc["class_type_name"] = None
     count = await db.students.count_documents({"course_id": doc["id"], "active": True})
     doc["student_count"] = count
     return doc
@@ -330,12 +348,7 @@ async def get_course_classes(course_id: str, request: Request, user=Depends(requ
 
 @api.post("/courses")
 async def create_course(data: CourseCreate, user=Depends(require_role("SUPERUSER"))):
-    teacher = await db.teachers.find_one({"id": data.teacher_id, "active": True})
-    if not teacher:
-        raise HTTPException(status_code=400, detail="Profesor no encontrado")
-    ct = await db.class_types.find_one({"id": data.class_type_id, "active": True})
-    if not ct:
-        raise HTTPException(status_code=400, detail="Tipo de clase no encontrado")
+    # Create course with new schema (no teacher_id/class_type_id)
     new_course = CourseInDB(**data.model_dump())
     doc = new_course.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
@@ -376,17 +389,16 @@ def times_overlap(s1_start, s1_end, s2_start, s2_end):
 
 
 async def enrich_session(session_doc):
-    """Add course_name, classroom_name, teacher_name to session doc."""
+    """Add course_name, classroom_name, teacher_name, class_type_name to session doc."""
     doc = serialize_doc(session_doc)
     course = await db.courses.find_one({"id": doc.get("course_id")}, {"_id": 0})
     doc["course_name"] = course["name"] if course else None
     room = await db.classrooms.find_one({"id": doc.get("classroom_id")}, {"_id": 0})
     doc["classroom_name"] = room["name"] if room else None
-    if course:
-        teacher = await db.teachers.find_one({"id": course.get("teacher_id")}, {"_id": 0})
-        doc["teacher_name"] = teacher["name"] if teacher else None
-    else:
-        doc["teacher_name"] = None
+    teacher = await db.teachers.find_one({"id": doc.get("teacher_id")}, {"_id": 0})
+    doc["teacher_name"] = teacher["name"] if teacher else None
+    class_type = await db.class_types.find_one({"id": doc.get("class_type_id")}, {"_id": 0})
+    doc["class_type_name"] = class_type["name"] if class_type else None
     return doc
 
 
@@ -432,6 +444,14 @@ async def create_session(data: ClassSessionCreate, user=Depends(require_role("AD
     course = await db.courses.find_one({"id": data.course_id, "active": True})
     if not course:
         raise HTTPException(status_code=400, detail="Curso no encontrado")
+    # Validate teacher exists
+    teacher = await db.teachers.find_one({"id": data.teacher_id, "active": True})
+    if not teacher:
+        raise HTTPException(status_code=400, detail="Profesor no encontrado")
+    # Validate class type exists
+    class_type = await db.class_types.find_one({"id": data.class_type_id, "active": True})
+    if not class_type:
+        raise HTTPException(status_code=400, detail="Tipo de clase no encontrado")
     # Validate classroom exists
     room = await db.classrooms.find_one({"id": data.classroom_id, "active": True})
     if not room:
@@ -446,6 +466,16 @@ async def create_session(data: ClassSessionCreate, user=Depends(require_role("AD
                 raise HTTPException(
                     status_code=409,
                     detail="Conflicto de horario: el salón ya tiene una sesión programada en ese rango",
+                )
+        # Check teacher conflict
+        existing_teacher = await db.classes.find(
+            {"teacher_id": data.teacher_id, "date": data.date, "active": True}, {"_id": 0}
+        ).to_list(1000)
+        for ex in existing_teacher:
+            if times_overlap(data.start_time, data.end_time, ex["start_time"], ex["end_time"]):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Conflicto de horario: el profesor ya tiene una sesión asignada en ese horario",
                 )
     new_session = ClassSessionInDB(**data.model_dump())
     doc = new_session.model_dump()
@@ -462,6 +492,34 @@ async def update_session(session_id: str, data: ClassSessionUpdate, user=Depends
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No hay datos para actualizar")
+    
+    new_date = updates.get("date", session.get("date"))
+    new_start = updates.get("start_time", session.get("start_time"))
+    new_end = updates.get("end_time", session.get("end_time"))
+    new_room = updates.get("classroom_id", session.get("classroom_id"))
+    new_teacher = updates.get("teacher_id", session.get("teacher_id"))
+    is_recovered = updates.get("recovered", session.get("recovered", False))
+    
+    if not is_recovered:
+        existing = await db.classes.find(
+            {"classroom_id": new_room, "date": new_date, "active": True, "id": {"$ne": session_id}}, {"_id": 0}
+        ).to_list(1000)
+        for ex in existing:
+            if times_overlap(new_start, new_end, ex["start_time"], ex["end_time"]):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Conflicto de horario: el salón ya tiene una sesión programada en ese rango",
+                )
+        existing_teacher = await db.classes.find(
+            {"teacher_id": new_teacher, "date": new_date, "active": True, "id": {"$ne": session_id}}, {"_id": 0}
+        ).to_list(1000)
+        for ex in existing_teacher:
+            if times_overlap(new_start, new_end, ex["start_time"], ex["end_time"]):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Conflicto de horario: el profesor ya tiene una sesión asignada en ese horario",
+                )
+    
     result = await db.classes.update_one({"id": session_id, "active": True}, {"$set": updates})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
@@ -521,6 +579,14 @@ async def get_student(student_id: str, request: Request, user=Depends(require_ro
     return doc
 
 
+def is_minor(birth_date: date) -> bool:
+    today = date.today()
+    age = today.year - birth_date.year - (
+        (today.month, today.day) < (birth_date.month, birth_date.day)
+    )
+    return age < 18
+
+
 @api.post("/students")
 async def create_student(data: StudentCreate, user=Depends(require_role("ADMIN", "SUPERUSER"))):
     # Validate course if provided
@@ -532,7 +598,17 @@ async def create_student(data: StudentCreate, user=Depends(require_role("ADMIN",
         count = await db.students.count_documents({"course_id": data.course_id, "active": True})
         if count >= course["max_students"]:
             raise HTTPException(status_code=400, detail="El curso ha alcanzado el límite máximo de alumnos")
-    student = StudentInDB(**data.model_dump())
+    
+    # Validate guardian based on age
+    guardian = data.guardian
+    if data.birth_date:
+        birth = datetime.strptime(data.birth_date, "%Y-%m-%d").date()
+        if not is_minor(birth):
+            guardian = None
+    
+    student_data = data.model_dump()
+    student_data["guardian"] = guardian.model_dump() if guardian else None
+    student = StudentInDB(**student_data)
     doc = student.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
     await db.students.insert_one(doc)
@@ -541,9 +617,31 @@ async def create_student(data: StudentCreate, user=Depends(require_role("ADMIN",
 
 @api.put("/students/{student_id}")
 async def update_student(student_id: str, data: StudentUpdate, user=Depends(require_role("ADMIN", "SUPERUSER"))):
+    # Get existing student for comparison
+    existing = await db.students.find_one({"id": student_id, "active": True})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Alumno no encontrado")
+    
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No hay datos para actualizar")
+    
+    # Validate and process guardian based on age
+    if "guardian" in updates or "birth_date" in updates:
+        new_birth_date = updates.get("birth_date", existing.get("birth_date"))
+        guardian_in_payload = "guardian" in updates
+        new_guardian = updates.get("guardian", existing.get("guardian"))
+        
+        if new_birth_date:
+            birth = datetime.strptime(new_birth_date, "%Y-%m-%d").date()
+            if not is_minor(birth):
+                updates["guardian"] = None
+            elif guardian_in_payload:
+                updates["guardian"] = new_guardian.model_dump() if new_guardian else None
+        else:
+            if guardian_in_payload and new_guardian:
+                updates["guardian"] = new_guardian.model_dump() if new_guardian else None
+    
     # Validate new course if changing
     if "course_id" in updates and updates["course_id"]:
         course = await db.courses.find_one({"id": updates["course_id"], "active": True})
@@ -565,6 +663,125 @@ async def delete_student(student_id: str, user=Depends(require_role("ADMIN", "SU
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Alumno no encontrado")
     return {"message": "Alumno desactivado"}
+
+
+@api.post("/students/import/excel")
+async def import_students_excel(
+    file: UploadFile,
+    user=Depends(require_role("ADMIN", "SUPERUSER")),
+):
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(status_code=400, detail="El archivo debe ser .xlsx o .xls")
+    
+    content = await file.read()
+    try:
+        wb = openpyxl.load_workbook(BytesIO(content), data_only=True)
+        sheet = wb.active
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error al leer el archivo: {str(e)}")
+    
+    headers = [normalize(h) for h in next(sheet.iter_rows(min_row=1, max_row=1), [])]
+    col_index = {normalize(h): i for i, h in enumerate(headers)}
+    
+    required_cols = ['nombre']
+    for col in required_cols:
+        if col not in col_index:
+            raise HTTPException(status_code=400, detail=f"Columna '{col}' faltante en el Excel")
+    
+    created = 0
+    errors = []
+    
+    for row_idx, row in enumerate(sheet.iter_rows(min_row=2), start=2):
+        try:
+            name = row[col_index['nombre']].value
+            if not name:
+                errors.append({"row": row_idx, "reason": "nombre es obligatorio"})
+                continue
+            
+            name = str(name).strip()
+            birth_date = None
+            if 'fecha de nacimiento' in col_index:
+                bd = row[col_index['fecha de nacimiento']].value
+                if bd:
+                    if isinstance(bd, datetime):
+                        birth_date = bd.strftime('%Y-%m-%d')
+                    else:
+                        birth_date = str(bd).strip()
+            
+            email = None
+            if 'email' in col_index:
+                e = row[col_index['email']].value
+                if e:
+                    email = str(e).strip()
+            
+            phone = None
+            if 'teléfono' in col_index:
+                p = row[col_index['teléfono']].value
+                if p:
+                    phone = str(p).strip()
+            
+            course_id = None
+            if 'curso' in col_index or 'mes de inicio' in col_index:
+                course_name = None
+                if 'curso' in col_index:
+                    cn = row[col_index['curso']].value
+                    if cn:
+                        course_name = str(cn).strip()
+                if not course_name and 'mes de inicio' in col_index:
+                    sm = row[col_index['mes de inicio']].value
+                    if sm:
+                        course_name = str(sm).strip()
+                
+                if course_name:
+                    course = await db.courses.find_one({
+                        "$or": [
+                            {"name": course_name},
+                            {"start_month": course_name}
+                        ],
+                        "active": True
+                    })
+                    if course:
+                        count = await db.students.count_documents({"course_id": course["id"], "active": True})
+                        if count < course["max_students"]:
+                            course_id = course["id"]
+                        else:
+                            errors.append({"row": row_idx, "reason": f"curso '{course_name}' sin cupos disponibles"})
+                            continue
+                    else:
+                        errors.append({"row": row_idx, "reason": f"curso '{course_name}' no encontrado o inactivo"})
+                        continue
+            
+            guardian = None
+            if 'nombre tutor' in col_index or 'teléfono tutor' in col_index:
+                g_name = row[col_index['nombre tutor']].value if 'nombre tutor' in col_index else None
+                g_phone = row[col_index['teléfono tutor']].value if 'teléfono tutor' in col_index else None
+                if g_name or g_phone:
+                    guardian = {
+                        "name": str(g_name).strip() if g_name else "",
+                        "phone": str(g_phone).strip() if g_phone else "",
+                    }
+                    if not guardian["name"]:
+                        guardian = None
+            
+            student_data = {
+                "name": name,
+                "email": email,
+                "phone": phone,
+                "birth_date": birth_date,
+                "guardian": guardian,
+                "course_id": course_id,
+            }
+            
+            student = StudentInDB(**student_data)
+            doc = student.model_dump()
+            doc["created_at"] = doc["created_at"].isoformat()
+            await db.students.insert_one(doc)
+            created += 1
+            
+        except Exception as e:
+            errors.append({"row": row_idx, "reason": str(e)})
+    
+    return {"created": created, "failed": len(errors), "errors": errors}
 
 
 @api.get("/students/{student_id}/attendance")
@@ -910,6 +1127,58 @@ async def export_teachers_report(
 
 # Include router + CORS
 app.include_router(api)
+
+external_api = APIRouter(prefix="/api/external")
+
+
+class ExternalStudentCreate(BaseModel):
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    birth_date: Optional[str] = None
+    course_id: Optional[str] = None
+
+
+@external_api.post("/students")
+async def create_external_student(
+    data: ExternalStudentCreate,
+    request: Request,
+):
+    api_key = os.environ.get('EXTERNAL_API_KEY')
+    received_key = request.headers.get('X-API-Key')
+    
+    if not api_key or api_key != received_key:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    course_id = data.course_id
+    if course_id:
+        course = await db.courses.find_one({"id": course_id, "active": True})
+        if not course:
+            raise HTTPException(status_code=400, detail="Curso no encontrado o inactivo")
+        count = await db.students.count_documents({"course_id": course_id, "active": True})
+        if count >= course["max_students"]:
+            raise HTTPException(status_code=400, detail="El curso ha alcanzado el límite máximo de alumnos")
+    
+    student_data = {
+        "name": data.name,
+        "email": data.email,
+        "phone": data.phone,
+        "birth_date": data.birth_date,
+        "course_id": course_id,
+    }
+    
+    student = StudentInDB(**student_data)
+    doc = student.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.students.insert_one(doc)
+    
+    return {
+        "id": doc["id"],
+        "name": doc["name"],
+        "created_at": doc["created_at"]
+    }
+
+app.include_router(external_api, tags=["external"])
 
 app.add_middleware(
     CORSMiddleware,

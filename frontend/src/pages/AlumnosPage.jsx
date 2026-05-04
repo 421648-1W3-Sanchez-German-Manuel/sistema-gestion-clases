@@ -14,8 +14,9 @@ import { Input } from '../components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../components/ui/dialog';
 import { Label } from '../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Plus, Pencil, Trash2, Eye, Users, Search, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Eye, Users, Search, Loader2, FileSpreadsheet, Download } from 'lucide-react';
 import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
 
 export default function AlumnosPage() {
   const { isSuperuser, isAdmin } = useAuth();
@@ -29,7 +30,22 @@ export default function AlumnosPage() {
   const [editing, setEditing] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', phone: '', birth_date: '', course_id: '' });
+  const [form, setForm] = useState({ name: '', email: '', phone: '', birth_date: '', course_id: '', guardian: null });
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
+
+  const isMinor = (birthDate) => {
+    if (!birthDate) return false;
+    const today = new Date();
+    const birth = new Date(birthDate);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    const dayDiff = today.getDate() - birth.getDate();
+    if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) age--;
+    return age < 18;
+  };
 
   const load = async () => {
     setLoading(true);
@@ -46,8 +62,8 @@ export default function AlumnosPage() {
 
   useEffect(() => { load(); }, [search, filterCourse]);
 
-  const openCreate = () => { setEditing(null); setForm({ name: '', email: '', phone: '', birth_date: '', course_id: '' }); setModalOpen(true); };
-  const openEdit = (s) => { setEditing(s); setForm({ name: s.name, email: s.email || '', phone: s.phone || '', birth_date: s.birth_date || '', course_id: s.course_id || '' }); setModalOpen(true); };
+  const openCreate = () => { setEditing(null); setForm({ name: '', email: '', phone: '', birth_date: '', course_id: '', guardian: null }); setModalOpen(true); };
+  const openEdit = (s) => { setEditing(s); setForm({ name: s.name, email: s.email || '', phone: s.phone || '', birth_date: s.birth_date || '', course_id: s.course_id || '', guardian: s.guardian || null }); setModalOpen(true); };
 
   const handleSave = async () => {
     if (!form.name) { toast.error('El nombre es obligatorio'); return; }
@@ -55,6 +71,9 @@ export default function AlumnosPage() {
     try {
       const payload = { ...form };
       if (payload.course_id === '' || payload.course_id === '__clear__') payload.course_id = null;
+      if (payload.guardian && !payload.guardian.name && !payload.guardian.phone) {
+        payload.guardian = null;
+      }
       if (editing) { await studentsAPI.update(editing.id, payload); toast.success('Alumno actualizado'); }
       else { await studentsAPI.create(payload); toast.success('Alumno creado'); }
       setModalOpen(false); load();
@@ -67,11 +86,40 @@ export default function AlumnosPage() {
     catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
   };
 
+  const downloadTemplate = () => {
+    const headers = [['nombre', 'fecha de nacimiento', 'curso', 'mes de inicio', 'email', 'teléfono', 'nombre tutor', 'teléfono tutor']];
+    const ws = XLSX.utils.aoa_to_sheet(headers);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Plantilla');
+    XLSX.writeFile(wb, 'plantilla_alumnos.xlsx');
+  };
+
+  const handleImport = async () => {
+    if (!importFile) { toast.error('Selecciona un archivo'); return; }
+    setImporting(true);
+    try {
+      const res = await studentsAPI.importExcel(importFile);
+      setImportResult(res.data);
+      if (res.data.created > 0) {
+        toast.success(`${res.data.created} alumnos creados correctamente`);
+        load();
+      }
+      if (res.data.failed > 0) {
+        toast.warning(`${res.data.failed} filas con error`);
+      }
+    } catch (err) { toast.error(err.response?.data?.detail || 'Error al importar'); }
+    setImporting(false);
+  };
+
+  const openImportModal = () => { setImportFile(null); setImportResult(null); setImportModalOpen(true); };
+
   return (
     <div>
       <PageHeader title="Alumnos" description="Gestiona el registro de alumnos" actions={
         <div className="flex items-center gap-2">
           <ExportMenu onExport={(format) => exportAPI.students(format)} />
+          <Button variant="outline" onClick={downloadTemplate}><Download className="h-4 w-4 mr-2" /> Plantilla</Button>
+          <Button variant="outline" onClick={openImportModal}><FileSpreadsheet className="h-4 w-4 mr-2" /> Importar Excel</Button>
           <Button onClick={openCreate}><Plus className="h-4 w-4 mr-2" /> Nuevo alumno</Button>
         </div>
       } />
@@ -140,6 +188,15 @@ export default function AlumnosPage() {
               </Select>
             </div>
             <div><Label>Fecha nacimiento</Label><Input type="date" value={form.birth_date} onChange={e => setForm({...form, birth_date: e.target.value})} className="bg-white" /></div>
+            {(isMinor(form.birth_date) || !form.birth_date) && (
+              <div className="border-t pt-4 mt-4">
+                <Label className="text-muted-foreground">Datos del tutor (opcional)</Label>
+                <div className="grid grid-cols-2 gap-4 mt-2">
+                  <div><Label>Nombre del tutor</Label><Input value={form.guardian?.name || ''} onChange={e => setForm({...form, guardian: {...(form.guardian || {}), name: e.target.value}})} className="bg-white" placeholder="Nombre completo" /></div>
+                  <div><Label>Teléfono del tutor</Label><Input value={form.guardian?.phone || ''} onChange={e => setForm({...form, guardian: {...(form.guardian || {}), phone: e.target.value}})} className="bg-white" placeholder="Teléfono" /></div>
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
@@ -148,7 +205,73 @@ export default function AlumnosPage() {
         </DialogContent>
       </Dialog>
 
-      <ConfirmDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)} title="Desactivar alumno" description={`\u00bfDesactivar a "${deleteTarget?.name}"?`} onConfirm={handleDelete} />
+      <ConfirmDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)} title="Desactivar alumno" description={`¿Desactivar a "${deleteTarget?.name}"?`} onConfirm={handleDelete} />
+
+      <Dialog open={importModalOpen} onOpenChange={setImportModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Importar alumnos desde Excel</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            {!importResult ? (
+              <>
+                <div>
+                  <Label>Archivo Excel (.xlsx o .xls)</Label>
+                  <Input
+                    type="file"
+                    accept=".xlsx,.xls"
+                    onChange={e => setImportFile(e.target.files?.[0] || null)}
+                    className="bg-white mt-2"
+                  />
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Columnas esperadas: nombre, fecha de nacimiento, curso, mes de inicio, email, teléfono, nombre tutor, teléfono tutor
+                </p>
+              </>
+            ) : (
+              <div className="space-y-4">
+                {importResult.created > 0 && (
+                  <div className="p-3 bg-green-50 text-green-700 rounded-md">
+                    {importResult.created} alumnos creados correctamente
+                  </div>
+                )}
+                {importResult.failed > 0 && (
+                  <>
+                    <div className="p-3 bg-yellow-50 text-yellow-700 rounded-md">
+                      {importResult.failed} filas con error
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Fila</TableHead>
+                          <TableHead>Reason</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {importResult.errors.map((err, i) => (
+                          <TableRow key={i}>
+                            <TableCell>{err.row}</TableCell>
+                            <TableCell>{err.reason}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setImportModalOpen(false)}>
+              {importResult ? 'Cerrar' : 'Cancelar'}
+            </Button>
+            {!importResult && (
+              <Button onClick={handleImport} disabled={importing || !importFile}>
+                {importing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                Subir
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
