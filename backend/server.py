@@ -1,5 +1,7 @@
-from fastapi import FastAPI, APIRouter, Request, HTTPException, Depends, Query, UploadFile
+from fastapi import FastAPI, APIRouter, Request, HTTPException, Depends, Query, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -49,6 +51,17 @@ api = APIRouter(prefix="/api")
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.warning(
+        "Request validation error on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc.errors(),
+    )
+    return await request_validation_exception_handler(request, exc)
 
 
 # ─── Startup: Seed SUPERUSER ───
@@ -667,9 +680,20 @@ async def delete_student(student_id: str, user=Depends(require_role("ADMIN", "SU
 
 @api.post("/students/import/excel")
 async def import_students_excel(
-    file: UploadFile,
+    request: Request,
+    file: Optional[UploadFile] = File(None),
     user=Depends(require_role("ADMIN", "SUPERUSER")),
 ):
+    if file is None:
+        content_type = request.headers.get("content-type")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No se recibió el archivo. Debe enviarse como multipart/form-data con el campo 'file'. "
+                f"Content-Type recibido: {content_type}"
+            ),
+        )
+
     if not file.filename.endswith(('.xlsx', '.xls')):
         raise HTTPException(status_code=400, detail="El archivo debe ser .xlsx o .xls")
     
@@ -715,8 +739,8 @@ async def import_students_excel(
                     email = str(e).strip()
             
             phone = None
-            if 'teléfono' in col_index:
-                p = row[col_index['teléfono']].value
+            if 'telefono' in col_index:
+                p = row[col_index['telefono']].value
                 if p:
                     phone = str(p).strip()
             
@@ -752,16 +776,25 @@ async def import_students_excel(
                         continue
             
             guardian = None
-            if 'nombre tutor' in col_index or 'teléfono tutor' in col_index:
-                g_name = row[col_index['nombre tutor']].value if 'nombre tutor' in col_index else None
-                g_phone = row[col_index['teléfono tutor']].value if 'teléfono tutor' in col_index else None
-                if g_name or g_phone:
-                    guardian = {
-                        "name": str(g_name).strip() if g_name else "",
-                        "phone": str(g_phone).strip() if g_phone else "",
-                    }
-                    if not guardian["name"]:
-                        guardian = None
+            # Solo crear guardian si hay fecha de nacimiento y el alumno es menor
+            if birth_date and ('nombre tutor' in col_index or 'telefono tutor' in col_index):
+                try:
+                    birth = datetime.strptime(birth_date, "%Y-%m-%d").date()
+                    if is_minor(birth):
+                        g_name = row[col_index['nombre tutor']].value if 'nombre tutor' in col_index else None
+                        g_phone = row[col_index['telefono tutor']].value if 'telefono tutor' in col_index else None
+                        
+                        g_name_str = str(g_name).strip() if g_name else ""
+                        g_phone_str = str(g_phone).strip() if g_phone else ""
+                        
+                        # Solo crear guardian si AMBOS campos tienen datos
+                        if g_name_str and g_phone_str:
+                            guardian = {
+                                "name": g_name_str,
+                                "phone": g_phone_str,
+                            }
+                except:
+                    pass  # Si falla el parsing de fecha, no incluir guardian
             
             student_data = {
                 "name": name,

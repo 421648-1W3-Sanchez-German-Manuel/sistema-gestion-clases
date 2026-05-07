@@ -55,3 +55,41 @@
     font-family: 'Roboto Mono', monospace;
   }
 }
+
+  @layer base {
+    .dark {
+      --background: 220 12% 12%;
+      --foreground: 210 8% 92%;
+      --card: 220 10% 16%;
+      --card-foreground: 210 8% 92%;
+      --popover: 220 10% 14%;
+      --popover-foreground: 210 8% 92%;
+      --primary: 210 12% 80%;
+      --primary-foreground: 220 12% 12%;
+      --secondary: 220 12% 14%;
+      --secondary-foreground: 210 8% 92%;
+      --muted: 220 12% 16%;
+      --muted-foreground: 220 10% 60%;
+      --accent: 220 12% 16%;
+      --accent-foreground: 210 8% 92%;
+      --destructive: 0 72% 60%;
+      --destructive-foreground: 0 0% 100%;
+      --border: 220 12% 20%;
+      --input: 220 12% 18%;
+      --ring: 210 10% 75%;
+      --chart-1: 173 80% 26%;
+      --chart-2: 221 83% 53%;
+      --chart-3: 27 96% 61%;
+      --chart-4: 142 71% 45%;
+      --chart-5: 0 72% 51%;
+      --radius: 0.75rem;
+      --sidebar-background: 220 10% 14%;
+      --sidebar-foreground: 210 8% 92%;
+      --sidebar-primary: 210 10% 85%;
+      --sidebar-primary-foreground: 220 12% 12%;
+      --sidebar-accent: 220 12% 16%;
+      --sidebar-accent-foreground: 210 8% 92%;
+      --sidebar-border: 220 12% 20%;
+      --sidebar-ring: 210 10% 40%;
+    }
+  }

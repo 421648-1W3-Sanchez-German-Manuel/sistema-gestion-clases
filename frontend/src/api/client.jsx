@@ -5,7 +5,16 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 const api = axios.create({
   baseURL: `${BACKEND_URL}/api`,
   withCredentials: true,
-  headers: { 'Content-Type': 'application/json' },
+});
+
+// Ensure FormData requests don't force a wrong Content-Type (browser must set boundary)
+api.interceptors.request.use((config) => {
+  if (config?.data instanceof FormData) {
+    if (!config.headers) config.headers = {};
+    delete config.headers['Content-Type'];
+    delete config.headers['content-type'];
+  }
+  return config;
 });
 
 // Auth
@@ -104,9 +113,7 @@ export const studentsAPI = {
   importExcel: (file) => {
     const formData = new FormData();
     formData.append('file', file);
-    return api.post('/students/import/excel', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    return api.post('/students/import/excel', formData);
   },
 };
 

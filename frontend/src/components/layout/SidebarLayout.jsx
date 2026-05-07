@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../ui/button';
+import ThemeToggle from '../ui/ThemeToggle';
 import { Sheet, SheetContent, SheetTrigger } from '../ui/sheet';
 import { Separator } from '../ui/separator';
 import {
@@ -83,7 +84,7 @@ export default function SidebarLayout() {
   return (
     <div className="flex h-screen bg-background">
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex md:w-[260px] flex-col bg-white border-r border-border">
+      <aside className="hidden md:flex md:w-[260px] flex-col bg-sidebar-background border-r border-sidebar-border">
         <div className="flex items-center gap-2 px-4 h-14 border-b border-border">
           <img src={kremlinLogo} alt="Kremlin Agency" className="h-8 w-auto object-contain" />
           <span className="font-semibold text-base font-['Bodoni_Moda']">Kremlin agency</span>
@@ -108,7 +109,7 @@ export default function SidebarLayout() {
 
       {/* Mobile sidebar */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-[280px] p-0">
+        <SheetContent side="left" className="w-[280px] p-0 bg-sidebar-background">
           <div className="flex items-center gap-2 px-4 h-14 border-b border-border">
             <img src={kremlinLogo} alt="Kremlin Agency" className="h-8 w-auto object-contain" />
             <span className="font-semibold">Kremlin agency</span>
@@ -126,14 +127,17 @@ export default function SidebarLayout() {
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Topbar */}
-        <header className="sticky top-0 z-30 h-14 bg-white/90 backdrop-blur border-b border-border flex items-center px-4 gap-4">
+        <header className="sticky top-0 z-30 h-14 bg-background/90 backdrop-blur border-b border-border flex items-center px-4 gap-4">
           <Button variant="ghost" size="sm" className="md:hidden" onClick={() => setMobileOpen(true)} data-testid="mobile-menu-button">
             <Menu className="h-5 w-5" />
           </Button>
           <div className="flex-1" />
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span className="hidden sm:inline">{user?.name}</span>
-            <span className="bg-primary/10 text-primary text-xs font-medium px-2 py-0.5 rounded">{user?.role}</span>
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="hidden sm:inline">{user?.name}</span>
+              <span className="bg-primary/10 text-primary text-xs font-medium px-2 py-0.5 rounded">{user?.role}</span>
+            </div>
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-4 md:p-6">

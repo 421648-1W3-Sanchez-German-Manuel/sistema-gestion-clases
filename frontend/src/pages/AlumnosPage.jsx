@@ -46,6 +46,17 @@ export default function AlumnosPage() {
     if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) age--;
     return age < 18;
   };
+  
+  const getErrorMessage = (err) => {
+    const detail = err.response?.data?.detail;
+    if (!detail) return 'Error al importar';
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+      const msgs = detail.map(e => e.msg || e.message || 'Error desconocido');
+      return msgs.join(', ');
+    }
+    return 'Error al importar';
+  };
 
   const load = async () => {
     setLoading(true);
@@ -107,7 +118,7 @@ export default function AlumnosPage() {
       if (res.data.failed > 0) {
         toast.warning(`${res.data.failed} filas con error`);
       }
-    } catch (err) { toast.error(err.response?.data?.detail || 'Error al importar'); }
+    } catch (err) { toast.error(getErrorMessage(err)); }
     setImporting(false);
   };
 
