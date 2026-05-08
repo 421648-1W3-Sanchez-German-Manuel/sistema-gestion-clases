@@ -314,7 +314,7 @@ class AttendanceOut(BaseModel):
 class StudentWithAttendance(BaseModel):
     student_id: str
     student_name: str
-    present: Optional[bool] = None
+    present: bool = False
     notes: str = ""
     attendance_id: Optional[str] = None
 

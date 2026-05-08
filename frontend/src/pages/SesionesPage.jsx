@@ -47,6 +47,11 @@ export default function SesionesPage() {
     recovered: false,
   });
 
+  const selectedCourseSchedule = React.useMemo(() => {
+    if (!form.course_id) return null;
+    return courses.find(c => String(c.id) === String(form.course_id))?.schedule || null;
+  }, [courses, form.course_id]);
+
   const hasConflict = (formDate, startTime, endTime, classroomId, teacherId, excludeId = null) => {
     if (!formDate || !startTime || !endTime) return null;
     for (const s of sessions) {
@@ -92,10 +97,33 @@ export default function SesionesPage() {
   useEffect(() => {
     const initialCourse = searchParams.get('new_course');
     if (initialCourse) {
-      setForm(prev => ({ ...prev, course_id: initialCourse }));
+      setEditing(null);
+      setForm({
+        course_id: initialCourse,
+        teacher_id: '',
+        class_type_id: '',
+        date: '',
+        start_time: '',
+        end_time: '',
+        classroom_id: '',
+        recovered: false,
+      });
       setModalOpen(true);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!modalOpen) return;
+    if (editing) return;
+    if (!selectedCourseSchedule) return;
+
+    setForm(prev => {
+      const nextStart = prev.start_time || selectedCourseSchedule.start_time || '';
+      const nextEnd = prev.end_time || selectedCourseSchedule.end_time || '';
+      if (nextStart === prev.start_time && nextEnd === prev.end_time) return prev;
+      return { ...prev, start_time: nextStart, end_time: nextEnd };
+    });
+  }, [modalOpen, editing, selectedCourseSchedule]);
 
   useEffect(() => { load(); }, [filterCourse, filterDate, filterRecovered]);
 

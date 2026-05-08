@@ -71,13 +71,13 @@ export default function AsistenciaPage() {
     
     setLoading(true);
     attendanceAPI.getForSession(selectedSession)
-      .then(r => setStudents(r.data.map(s => ({ ...s, present: s.present ?? null, notes: s.notes || '' }))))
+      .then(r => setStudents(r.data.map(s => ({ ...s, present: s.present ?? false, notes: s.notes || '' }))))
       .catch(() => toast.error('Error al cargar asistencia'))
       .finally(() => setLoading(false));
   }, [selectedSession, sessions]);
 
   const togglePresent = (idx) => {
-    setStudents(prev => prev.map((s, i) => i === idx ? { ...s, present: s.present === true ? false : true } : s));
+    setStudents(prev => prev.map((s, i) => i === idx ? { ...s, present: !s.present } : s));
   };
 
   const setNotes = (idx, notes) => {
@@ -201,15 +201,15 @@ export default function AsistenciaPage() {
             ) : (
               <div className="space-y-3">
                 {students.map((s, idx) => (
-                  <div key={s.student_id} className="flex items-center gap-4 p-3 rounded-lg border bg-white hover:bg-secondary/30 transition-colors duration-150">
+                  <div key={s.student_id} className="flex items-center gap-4 p-3 rounded-lg border bg-white hover:bg-secondary/30 transition-colors duration-150 dark:text-slate-900">
                     <div className="flex-1">
                       <p className="font-medium text-sm">{s.student_name}</p>
                     </div>
                     <div className="flex items-center gap-2" data-testid="attendance-student-present-toggle">
-                      <span className={`text-xs px-2 py-1 rounded ${s.present === true ? 'bg-emerald-100 text-emerald-700' : s.present === false ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-muted-foreground'}`}>
-                        {s.present === null ? 'Sin registrar' : s.present ? 'Presente' : 'Ausente'}
+                      <span className={`text-xs px-2 py-1 rounded ${s.present ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                        {s.present ? 'Presente' : 'Ausente'}
                       </span>
-                      <Switch checked={s.present === true} onCheckedChange={() => togglePresent(idx)} />
+                      <Switch checked={s.present} onCheckedChange={() => togglePresent(idx)} />
                     </div>
                     <Input placeholder="Notas..." value={s.notes} onChange={e => setNotes(idx, e.target.value)} className="w-48 bg-white text-sm" />
                   </div>

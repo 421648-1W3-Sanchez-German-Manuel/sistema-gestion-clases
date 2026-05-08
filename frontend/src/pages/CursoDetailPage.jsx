@@ -56,6 +56,25 @@ export default function CursoDetailPage() {
   const enrolledIds = new Set(students.map(s => s.id));
   const availableStudents = allStudents.filter(s => !enrolledIds.has(s.id) && !s.course_id);
 
+  const getLocalTodayIso = () => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 10);
+  };
+
+  const todayIso = getLocalTodayIso();
+  const historySessions = sessions.filter(s => s?.date && s.date <= todayIso);
+  const historyByType = historySessions.reduce((acc, s) => {
+    const typeName = s?.class_type_name || 'Sin tipo';
+    if (!acc[typeName]) acc[typeName] = { total: 0, recovered: 0 };
+    acc[typeName].total += 1;
+    if (s?.recovered) acc[typeName].recovered += 1;
+    return acc;
+  }, {});
+  const historyRows = Object.entries(historyByType)
+    .map(([typeName, v]) => ({ typeName, total: v.total, recovered: v.recovered }))
+    .sort((a, b) => (b.total - a.total) || a.typeName.localeCompare(b.typeName));
+
   const formatSchedule = (schedule) => {
     if (!schedule) return 'Sin horario';
     return `${schedule.start_time} - ${schedule.end_time}`;
@@ -119,6 +138,58 @@ export default function CursoDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="shadow-sm mb-6">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Calendar className="h-4 w-4" /> Historial por tipo de clase
+          </CardTitle>
+          <Badge variant="outline" className="font-mono">
+            {historySessions.length} realizadas
+          </Badge>
+        </CardHeader>
+        <CardContent>
+          {historyRows.length === 0 ? (
+            <EmptyState
+              icon={Calendar}
+              title="Sin historial"
+              description="Todavía no hay sesiones con fecha hasta hoy para este curso."
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tipo de clase</TableHead>
+                  <TableHead className="text-right">Sesiones</TableHead>
+                  <TableHead className="text-right">Recuperación</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {historyRows.map(r => (
+                  <TableRow key={r.typeName}>
+                    <TableCell className="font-medium">
+                      <Badge variant="secondary">{r.typeName}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right font-mono">{r.total}</TableCell>
+                    <TableCell className="text-right font-mono">
+                      {r.recovered > 0 ? (
+                        <Badge variant="outline" className="border-orange-500 text-orange-600 font-mono">
+                          {r.recovered}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">0</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+          <p className="mt-3 text-xs text-muted-foreground">
+            Se cuentan solo sesiones con fecha hasta hoy ({todayIso}). “Recuperación” incluye sesiones marcadas como recuperación.
+          </p>
+        </CardContent>
+      </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
@@ -202,6 +273,7 @@ export default function CursoDetailPage() {
                       <TableHead>Fecha</TableHead>
                       <TableHead>Horario</TableHead>
                       <TableHead>Salón</TableHead>
+                      <TableHead>Tipo de clase</TableHead>
                       <TableHead>Recuperación</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
@@ -212,6 +284,9 @@ export default function CursoDetailPage() {
                         <TableCell className="font-mono">{s.date}</TableCell>
                         <TableCell className="font-mono text-sm">{s.start_time} - {s.end_time}</TableCell>
                         <TableCell>{s.classroom_name || '-'}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">{s.class_type_name || '-'}</Badge>
+                        </TableCell>
                         <TableCell>
                           {s.recovered && <Badge variant="outline" className="border-orange-500 text-orange-600">Recuperación</Badge>}
                         </TableCell>

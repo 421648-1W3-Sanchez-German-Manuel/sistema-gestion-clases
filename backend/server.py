@@ -703,9 +703,13 @@ async def import_students_excel(
         sheet = wb.active
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error al leer el archivo: {str(e)}")
-    
-    headers = [normalize(h) for h in next(sheet.iter_rows(min_row=1, max_row=1), [])]
-    col_index = {normalize(h): i for i, h in enumerate(headers)}
+
+    header_row = next(
+        sheet.iter_rows(min_row=1, max_row=1, values_only=True),
+        (),
+    )
+    headers = [normalize(h or "") for h in header_row]
+    col_index = {h: i for i, h in enumerate(headers)}
     
     required_cols = ['nombre']
     for col in required_cols:
@@ -868,7 +872,7 @@ async def get_class_attendance(
         result.append({
             "student_id": s["id"],
             "student_name": s["name"],
-            "present": att["present"] if att else None,
+            "present": att["present"] if att else False,
             "notes": att.get("notes", "") if att else "",
             "attendance_id": att["id"] if att else None,
         })
@@ -1117,7 +1121,7 @@ async def export_attendance_report(
         att = att_map.get(s["id"])
         records.append({
             "student_name": s["name"],
-            "present": att["present"] if att else None,
+            "present": att["present"] if att else False,
             "notes": att.get("notes", "") if att else "",
         })
     # Enrich session info
