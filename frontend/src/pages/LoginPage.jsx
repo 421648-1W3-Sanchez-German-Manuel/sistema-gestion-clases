@@ -43,7 +43,7 @@ export default function LoginPage() {
             <div className="flex justify-center">
               <img src={kremlinLogo} alt="Kremlin Agency" className="h-12 w-auto object-contain" />
             </div>
-            <CardTitle className="text-2xl font-['Bodoni_Moda']">Acceso al sistema</CardTitle>
+            <CardTitle className="text-2xl font-serif">Acceso al sistema</CardTitle>
             <CardDescription>Gestiona clases, asistencia y facturación de forma centralizada.</CardDescription>
           </CardHeader>
           <CardContent>
@@ -93,7 +93,7 @@ export default function LoginPage() {
         />
         <div className="absolute inset-0 flex items-end p-10">
           <div className="bg-white/80 backdrop-blur-sm rounded-xl p-6 max-w-sm">
-            <h3 className="font-semibold text-lg font-['Bodoni_Moda'] mb-2">Kremlin agency</h3>
+            <h3 className="font-semibold text-lg font-serif mb-2">Kremlin agency</h3>
             <p className="text-sm text-muted-foreground">Administra profesores, alumnos, salones, horarios, asistencia y facturación desde un solo lugar.</p>
           </div>
         </div>

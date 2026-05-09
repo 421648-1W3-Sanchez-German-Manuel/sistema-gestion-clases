@@ -134,8 +134,14 @@ export const billingAPI = {
   get: (id) => api.get(`/billing/${id}`),
   create: (data) => api.post('/billing', data),
   update: (id, data) => api.put(`/billing/${id}`, data),
+  updateStatus: (id, data) => api.patch(`/billing/${id}/status`, data),
   delete: (id) => api.delete(`/billing/${id}`),
   markOverdue: () => api.post('/billing/mark-overdue'),
+  generateMonthly: () => api.post('/billing/generate-monthly'),
+  settings: {
+    get: () => api.get('/billing/settings'),
+    update: (data) => api.put('/billing/settings', data),
+  },
 };
 
 // Dashboard

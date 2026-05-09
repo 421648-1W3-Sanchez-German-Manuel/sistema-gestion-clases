@@ -326,6 +326,7 @@ class BillingInDB(BaseModel):
     student_id: str
     amount: float
     due_date: str
+    billing_period: str
     paid_date: Optional[str] = None
     status: str = "PENDING"  # PENDING | PAID | OVERDUE | CANCELLED
     description: Optional[str] = None
@@ -336,6 +337,7 @@ class BillingCreate(BaseModel):
     student_id: str
     amount: float
     due_date: str
+    billing_period: Optional[str] = None
     description: Optional[str] = None
 
 
@@ -347,11 +349,27 @@ class BillingUpdate(BaseModel):
     description: Optional[str] = None
 
 
+class BillingStatusUpdate(BaseModel):
+    status: str
+    paid_date: Optional[str] = None
+
+
+class BillingSettingsUpdate(BaseModel):
+    monthly_amount: float
+
+
+class BillingSettingsOut(BaseModel):
+    monthly_amount: float
+    source: str = "db"
+    updated_at: Optional[datetime] = None
+
+
 class BillingOut(BaseModel):
     id: str
     student_id: str
     amount: float
     due_date: str
+    billing_period: str
     paid_date: Optional[str] = None
     status: str
     description: Optional[str] = None

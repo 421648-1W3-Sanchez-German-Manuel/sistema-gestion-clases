@@ -40,3 +40,37 @@ def test_course_in_db_no_extra_relationships():
     assert "class_type_id" not in data
     assert data["schedule"]["start_time"] == "09:00"
     assert data["schedule"]["end_time"] == "10:30"
+
+
+def test_billing_in_db_includes_period_and_pending_status():
+    models = _load_models_module()
+    BillingInDB = models.BillingInDB
+    bill = BillingInDB(
+        student_id="student-1",
+        amount=150.0,
+        due_date="2026-05-10",
+        billing_period="2026-05",
+    )
+    data = bill.model_dump()
+    assert data["billing_period"] == "2026-05"
+    assert data["status"] == "PENDING"
+
+
+def test_billing_create_allows_optional_period():
+    models = _load_models_module()
+    BillingCreate = models.BillingCreate
+    bill = BillingCreate(student_id="student-1", amount=150.0, due_date="2026-05-10")
+    assert bill.billing_period is None
+
+
+def test_billing_settings_update_and_output():
+    models = _load_models_module()
+    BillingSettingsUpdate = models.BillingSettingsUpdate
+    BillingSettingsOut = models.BillingSettingsOut
+
+    update = BillingSettingsUpdate(monthly_amount=275.5)
+    output = BillingSettingsOut(monthly_amount=275.5, source="db")
+
+    assert update.monthly_amount == 275.5
+    assert output.monthly_amount == 275.5
+    assert output.source == "db"

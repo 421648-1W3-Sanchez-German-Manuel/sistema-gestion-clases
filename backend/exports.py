@@ -150,16 +150,16 @@ def export_classes_pdf(classes):
 # BILLING EXPORT
 # ────────────────────────────────────────
 def export_billing_csv(bills):
-    headers = ['Alumno', 'Concepto', 'Monto', 'Vencimiento', 'Fecha Pago', 'Estado']
-    rows = [[b.get('student_name'), b.get('description'), b.get('amount'),
+    headers = ['Alumno', 'Periodo', 'Concepto', 'Monto', 'Vencimiento', 'Fecha Pago', 'Estado']
+    rows = [[b.get('student_name'), b.get('billing_period'), b.get('description'), b.get('amount'),
              b.get('due_date'), b.get('paid_date'),
              STATUS_LABELS.get(b.get('status'), b.get('status'))] for b in bills]
     return _build_csv(headers, rows)
 
 
 def export_billing_pdf(bills):
-    headers = ['Alumno', 'Concepto', 'Monto', 'Vencimiento', 'Pago', 'Estado']
-    rows = [[b.get('student_name'), b.get('description'),
+    headers = ['Alumno', 'Periodo', 'Concepto', 'Monto', 'Vencimiento', 'Pago', 'Estado']
+    rows = [[b.get('student_name'), b.get('billing_period'), b.get('description'),
              f"${b.get('amount', 0):.2f}", b.get('due_date'), b.get('paid_date'),
              STATUS_LABELS.get(b.get('status'), b.get('status'))] for b in bills]
     total = sum(b.get('amount', 0) for b in bills)

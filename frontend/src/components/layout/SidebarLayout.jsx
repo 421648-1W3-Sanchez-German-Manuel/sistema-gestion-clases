@@ -87,7 +87,7 @@ export default function SidebarLayout() {
       <aside className="hidden md:flex md:w-[260px] flex-col bg-sidebar-background border-r border-sidebar-border">
         <div className="flex items-center gap-2 px-4 h-14 border-b border-border">
           <img src={kremlinLogo} alt="Kremlin Agency" className="h-8 w-auto object-contain" />
-          <span className="font-semibold text-base font-['Bodoni_Moda']">Kremlin agency</span>
+          <span className="font-semibold text-base font-serif">Kremlin agency</span>
         </div>
         <NavItems />
         <Separator />

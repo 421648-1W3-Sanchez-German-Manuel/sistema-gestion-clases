@@ -2,6 +2,7 @@ from fastapi import FastAPI, APIRouter, Request, HTTPException, Depends, Query, 
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.exception_handlers import request_validation_exception_handler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -24,7 +25,7 @@ from models import (
     ClassSessionInDB, ClassSessionCreate, ClassSessionUpdate, ClassSessionOut,
     StudentInDB, StudentCreate, StudentUpdate, StudentOut,
     AttendanceInDB, AttendanceBulkItem, AttendanceOut, StudentWithAttendance,
-    BillingInDB, BillingCreate, BillingUpdate, BillingOut,
+    BillingInDB, BillingCreate, BillingUpdate, BillingStatusUpdate, BillingSettingsUpdate, BillingSettingsOut, BillingOut,
     LoginRequest, LoginResponse,
 )
 from auth import (
@@ -33,9 +34,13 @@ from auth import (
     COOKIE_NAME,
 )
 from serializers import serialize_doc, serialize_list
+from billing_jobs import billing_period_from_due_date, generate_monthly_billing
 
 def normalize(s):
     return unicodedata.normalize('NFD', str(s).strip()).encode('ascii', 'ignore').decode('utf-8').lower()
+
+
+BILLING_SETTINGS_KEY = "monthly_billing_amount"
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -47,10 +52,40 @@ db = client[os.environ.get('DB_NAME', 'gestion_clases')]
 
 app = FastAPI(title="Sistema de Gestión de Clases", version="2.0.0")
 api = APIRouter(prefix="/api")
+billing_scheduler = AsyncIOScheduler(timezone=timezone.utc, job_defaults={"coalesce": True, "max_instances": 1})
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+def _parse_amount(raw_value: str) -> float:
+    try:
+        return float(raw_value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+async def get_monthly_billing_amount() -> float:
+    setting = await db.settings.find_one({"key": BILLING_SETTINGS_KEY}, {"_id": 0})
+    if setting and setting.get("monthly_amount") is not None:
+        return float(setting["monthly_amount"])
+    return _parse_amount(os.environ.get("MONTHLY_BILLING_AMOUNT", "0"))
+
+
+async def set_monthly_billing_amount(monthly_amount: float) -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "key": BILLING_SETTINGS_KEY,
+        "monthly_amount": float(monthly_amount),
+        "updated_at": now,
+    }
+    await db.settings.update_one({"key": BILLING_SETTINGS_KEY}, {"$set": doc}, upsert=True)
+    return doc
+
+
+async def run_monthly_billing_cycle():
+    await generate_monthly_billing(db, await get_monthly_billing_amount(), logger=logger)
 
 
 @app.exception_handler(RequestValidationError)
@@ -87,7 +122,9 @@ async def startup_event():
     await db.classrooms.create_index("id", unique=True)
     await db.students.create_index("id", unique=True)
     await db.students.create_index("course_id")
+    await db.settings.create_index("key", unique=True)
     await db.billing.create_index("id", unique=True)
+    await db.billing.create_index([("student_id", 1), ("billing_period", 1)], unique=True)
     # Courses
     await db.courses.create_index("id", unique=True)
     # Class sessions
@@ -97,11 +134,31 @@ async def startup_event():
     # Attendance
     await db.attendance.create_index("id", unique=True)
     await db.attendance.create_index([("class_id", 1), ("student_id", 1)], unique=True)
+
+    if not await db.settings.find_one({"key": BILLING_SETTINGS_KEY}, {"_id": 0}):
+        await set_monthly_billing_amount(_parse_amount(os.environ.get("MONTHLY_BILLING_AMOUNT", "0")))
+
+    await run_monthly_billing_cycle()
+
+    if not billing_scheduler.running:
+        billing_scheduler.add_job(
+            run_monthly_billing_cycle,
+            trigger="cron",
+            day="1",
+            hour="0",
+            minute="5",
+            second="0",
+            id="monthly_billing_cycle",
+            replace_existing=True,
+        )
+        billing_scheduler.start()
     logger.info("Base de datos inicializada correctamente")
 
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    if billing_scheduler.running:
+        billing_scheduler.shutdown(wait=False)
     client.close()
 
 
@@ -944,6 +1001,34 @@ async def list_billing(
     return result
 
 
+@api.get("/billing/settings")
+async def get_billing_settings(user=Depends(require_role("ADMIN", "SUPERUSER"))):
+    monthly_amount = await get_monthly_billing_amount()
+    setting = await db.settings.find_one({"key": BILLING_SETTINGS_KEY}, {"_id": 0})
+    return BillingSettingsOut(
+        monthly_amount=monthly_amount,
+        source="db" if setting else "env",
+        updated_at=setting.get("updated_at") if setting else None,
+    ).model_dump(mode="json")
+
+
+@api.put("/billing/settings")
+async def update_billing_settings(data: BillingSettingsUpdate, user=Depends(require_role("ADMIN", "SUPERUSER"))):
+    setting = await set_monthly_billing_amount(data.monthly_amount)
+    result = await db.billing.update_many(
+        {
+            "status": {"$in": ["PENDING", "OVERDUE"]},
+            "billing_period": {"$exists": True},
+        },
+        {"$set": {"amount": float(data.monthly_amount)}},
+    )
+    return {
+        "monthly_amount": float(data.monthly_amount),
+        "updated_bills": result.modified_count,
+        "updated_at": setting["updated_at"],
+    }
+
+
 @api.get("/billing/{bill_id}")
 async def get_billing(bill_id: str, request: Request, user=Depends(require_role("ADMIN", "SUPERUSER"))):
     bill = await db.billing.find_one({"id": bill_id}, {"_id": 0})
@@ -960,13 +1045,36 @@ async def create_billing(data: BillingCreate, user=Depends(require_role("ADMIN",
     student = await db.students.find_one({"id": data.student_id, "active": True})
     if not student:
         raise HTTPException(status_code=404, detail="Alumno no encontrado")
-    bill = BillingInDB(**data.model_dump())
+    billing_period = data.billing_period or billing_period_from_due_date(data.due_date)
+    existing = await db.billing.find_one({"student_id": data.student_id, "billing_period": billing_period}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=409, detail="Ya existe una factura para este alumno y periodo")
+    bill = BillingInDB(**data.model_dump(exclude={"billing_period"}), billing_period=billing_period)
     doc = bill.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
     await db.billing.insert_one(doc)
     result = serialize_doc(doc)
     result["student_name"] = student["name"]
     return result
+
+
+@api.patch("/billing/{bill_id}/status")
+async def update_billing_status(bill_id: str, data: BillingStatusUpdate, user=Depends(require_role("ADMIN", "SUPERUSER"))):
+    if data.status not in ["PENDING", "PAID", "OVERDUE", "CANCELLED"]:
+        raise HTTPException(status_code=400, detail="Estado inválido")
+    updates = {"status": data.status}
+    if data.paid_date is not None:
+        updates["paid_date"] = data.paid_date
+    elif data.status == "PAID":
+        updates["paid_date"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    result = await db.billing.update_one({"id": bill_id}, {"$set": updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Factura no encontrada")
+    updated = await db.billing.find_one({"id": bill_id}, {"_id": 0})
+    doc = serialize_doc(updated)
+    student = await db.students.find_one({"id": updated["student_id"]}, {"_id": 0})
+    doc["student_name"] = student["name"] if student else "Desconocido"
+    return doc
 
 
 @api.put("/billing/{bill_id}")
@@ -1002,6 +1110,12 @@ async def mark_overdue_billing(user=Depends(require_role("ADMIN", "SUPERUSER")))
         {"$set": {"status": "OVERDUE"}},
     )
     return {"message": f"{result.modified_count} facturas marcadas como vencidas"}
+
+
+@api.post("/billing/generate-monthly")
+async def generate_monthly_billing_now(user=Depends(require_role("ADMIN", "SUPERUSER"))):
+    summary = await generate_monthly_billing(db, await get_monthly_billing_amount(), logger=logger)
+    return summary
 
 
 # ─── DASHBOARD ───

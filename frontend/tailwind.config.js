@@ -4,6 +4,11 @@ export default {
   content: ["./src/**/*.{jsx,js,ts,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['Montserrat', 'sans-serif'],
+        serif: ['Cormorant Garamond', 'serif'],
+        mono: ['Roboto Mono', 'monospace'],
+      },
       colors: {
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
