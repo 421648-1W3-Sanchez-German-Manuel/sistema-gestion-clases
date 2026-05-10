@@ -72,8 +72,8 @@ def set_auth_cookie(response: JSONResponse, token: str):
         key=COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=False,  # Set True in production with HTTPS
-        samesite="lax",
+        secure=True,  # Set True in production with HTTPS
+        samesite="none",
         path="/api",
         max_age=TOKEN_EXPIRE_HOURS * 3600,
     )
