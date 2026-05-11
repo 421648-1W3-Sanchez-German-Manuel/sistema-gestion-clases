@@ -65,6 +65,10 @@ def _parse_amount(raw_value: str) -> float:
     except (TypeError, ValueError):
         return 0.0
 
+def _get_cors_origins() -> list[str]:
+    raw = os.environ.get("CORS_ORIGINS", "")
+    origins = [o.strip() for o in raw.split(",") if o.strip()]
+    return origins
 
 async def get_monthly_billing_amount() -> float:
     setting = await db.settings.find_one({"key": BILLING_SETTINGS_KEY}, {"_id": 0})
@@ -1281,6 +1285,13 @@ app.include_router(api)
 
 external_api = APIRouter(prefix="/api/external")
 
+origins = _get_cors_origins()
+if not origins:
+    # Fail closed by default (avoid "*" with credentials)
+    origins = [
+        "http://localhost:5173",
+        "https://sistema-gestion-clases.vercel.app",
+    ]
 
 class ExternalStudentCreate(BaseModel):
     name: str
@@ -1334,7 +1345,7 @@ app.include_router(external_api, tags=["external"])
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

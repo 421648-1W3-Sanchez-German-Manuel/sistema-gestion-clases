@@ -84,8 +84,8 @@ def clear_auth_cookie(response: JSONResponse):
         key=COOKIE_NAME,
         value="",
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=True,
+        samesite="none",
         path="/api",
         max_age=0,
     )
